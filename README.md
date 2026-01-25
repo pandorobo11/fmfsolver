@@ -5,6 +5,11 @@
 uv sync
 ```
 
+## Install (pip)
+```bash
+python -m pip install .
+```
+
 ## Run
 ```bash
 uv run fmfsolver
