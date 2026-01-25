@@ -265,7 +265,9 @@ class MainWindow(QtWidgets.QMainWindow):
             res = run_cases(df_sel, self.logln)
 
             out_summary = Path(self.xlsx_path)
-            out_path = out_summary.with_name(out_summary.stem + "_result.xlsx")
+            out_dir = Path("outputs")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"{out_summary.stem}_result.xlsx"
 
             if self._confirm_overwrite(out_path):
                 write_results_excel(str(out_path), df_sel, res)
