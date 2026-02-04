@@ -1,4 +1,4 @@
-solid double_square_plate_area1_normal_minusX
+solid double_square_plate_area1_minusX
   facet normal -1.000000 0.000000 0.000000
     outer loop
       vertex 0.000000 -0.500000 -0.500000
@@ -28,4 +28,4 @@ solid double_square_plate_area1_normal_minusX
       vertex 1.000000 0.500000 -0.500000
     endloop
   endfacet
-endsolid double_square_plate_area1_normal_minusX
+endsolid double_square_plate_area1_minusX
