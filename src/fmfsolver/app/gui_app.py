@@ -102,11 +102,22 @@ class MainWindow(QtWidgets.QMainWindow):
         # -------------------------
         right = QtWidgets.QWidget()
         right_layout = QtWidgets.QVBoxLayout(right)
+        right_layout.setSpacing(6)
+        right_layout.setContentsMargins(0, 0, 0, 0)
 
         self.plotter = QtInteractor(right)
+        try:
+            self.plotter.enable_parallel_projection()
+        except Exception:
+            try:
+                self.plotter.camera.parallel_projection = True
+            except Exception:
+                pass
         right_layout.addWidget(self.plotter.interactor, 6)
 
-        ctrl = QtWidgets.QGridLayout()
+        ctrl = QtWidgets.QVBoxLayout()
+        ctrl.setSpacing(4)
+        ctrl.setContentsMargins(0, 0, 0, 0)
 
         self.cmb_scalar = QtWidgets.QComboBox()
         self.cmb_scalar.addItems([
@@ -131,22 +142,102 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_auto_range = QtWidgets.QPushButton("Auto range")
 
         self.btn_open_vtp = QtWidgets.QPushButton("Open VTP...")
+        self.btn_view_xp = QtWidgets.QPushButton("+X")
+        self.btn_view_xn = QtWidgets.QPushButton("-X")
+        self.btn_view_yp = QtWidgets.QPushButton("+Y")
+        self.btn_view_yn = QtWidgets.QPushButton("-Y")
+        self.btn_view_zp = QtWidgets.QPushButton("+Z")
+        self.btn_view_zn = QtWidgets.QPushButton("-Z")
+        self.btn_view_iso_1 = QtWidgets.QPushButton("-X -Y +Z")
+        self.btn_view_iso_2 = QtWidgets.QPushButton("+X -Y -Z")
+        self.btn_save_image = QtWidgets.QPushButton("Save Image...")
 
-        r = 0
-        ctrl.addWidget(QtWidgets.QLabel("Scalar:"), r, 0)
-        ctrl.addWidget(self.cmb_scalar, r, 1)
-        ctrl.addWidget(self.chk_edges, r, 2)
-        ctrl.addWidget(self.chk_shield_transparent, r, 3)
-        ctrl.addWidget(QtWidgets.QLabel("Colormap:"), r, 4)
-        ctrl.addWidget(self.cmb_cmap, r, 5)
-        ctrl.addWidget(self.btn_open_vtp, r, 6)
+        ref_height = self.btn_open_vtp.sizeHint().height()
+        camera_buttons = [
+            self.btn_view_xp,
+            self.btn_view_xn,
+            self.btn_view_yp,
+            self.btn_view_yn,
+            self.btn_view_zp,
+            self.btn_view_zn,
+            self.btn_view_iso_1,
+            self.btn_view_iso_2,
+            self.btn_save_image,
+        ]
+        max_width = max(b.sizeHint().width() for b in camera_buttons)
+        for b in camera_buttons:
+            b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+            b.setFixedWidth(max_width)
+            b.setMinimumHeight(ref_height)
 
-        r = 1
-        ctrl.addWidget(QtWidgets.QLabel("Colorbar range:"), r, 0)
-        ctrl.addWidget(self.edit_vmin, r, 1)
-        ctrl.addWidget(self.edit_vmax, r, 2)
-        ctrl.addWidget(self.btn_auto_range, r, 3)
+        self.lbl_scalar = QtWidgets.QLabel("Scalar:")
+        self.lbl_colorbar = QtWidgets.QLabel("Colorbar range:")
+        self.lbl_camera = QtWidgets.QLabel("Camera:")
+        for lbl in (self.lbl_scalar, self.lbl_colorbar, self.lbl_camera):
+            lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
+        max_label_width = max(
+            self.lbl_scalar.sizeHint().width(),
+            self.lbl_colorbar.sizeHint().width(),
+            self.lbl_camera.sizeHint().width(),
+        )
+        for lbl in (self.lbl_scalar, self.lbl_colorbar, self.lbl_camera):
+            lbl.setFixedWidth(max_label_width)
+
+        scalar_layout = QtWidgets.QHBoxLayout()
+        scalar_layout.setSpacing(6)
+        scalar_layout.setContentsMargins(0, 0, 0, 0)
+        scalar_layout.addWidget(self.lbl_scalar)
+        scalar_layout.addWidget(self.cmb_scalar)
+        scalar_layout.addWidget(self.chk_edges)
+        scalar_layout.addWidget(self.chk_shield_transparent)
+        scalar_layout.addWidget(QtWidgets.QLabel("Colormap:"))
+        scalar_layout.addWidget(self.cmb_cmap)
+        scalar_layout.addWidget(self.btn_open_vtp)
+        scalar_layout.addStretch(1)
+
+        colorbar_layout = QtWidgets.QHBoxLayout()
+        colorbar_layout.setSpacing(6)
+        colorbar_layout.setContentsMargins(0, 0, 0, 0)
+        colorbar_layout.addWidget(self.lbl_colorbar)
+        colorbar_layout.addWidget(self.edit_vmin)
+        colorbar_layout.addWidget(self.edit_vmax)
+        colorbar_layout.addWidget(self.btn_auto_range)
+        colorbar_layout.addStretch(1)
+
+        camera_block = QtWidgets.QVBoxLayout()
+        camera_block.setSpacing(4)
+        camera_block.setContentsMargins(0, 0, 0, 0)
+
+        camera_row1 = QtWidgets.QHBoxLayout()
+        camera_row1.setSpacing(6)
+        camera_row1.setContentsMargins(0, 0, 0, 0)
+        camera_row1.addWidget(self.lbl_camera)
+        camera_row1.addWidget(self.btn_view_xp)
+        camera_row1.addWidget(self.btn_view_xn)
+        camera_row1.addWidget(self.btn_view_yp)
+        camera_row1.addWidget(self.btn_view_yn)
+        camera_row1.addWidget(self.btn_view_zp)
+        camera_row1.addWidget(self.btn_view_zn)
+        camera_row1.addStretch(1)
+
+        camera_row2 = QtWidgets.QHBoxLayout()
+        camera_row2.setSpacing(6)
+        camera_row2.setContentsMargins(0, 0, 0, 0)
+        spacer = QtWidgets.QLabel("")
+        spacer.setFixedWidth(max_label_width)
+        camera_row2.addWidget(spacer)
+        camera_row2.addWidget(self.btn_view_iso_1)
+        camera_row2.addWidget(self.btn_view_iso_2)
+        camera_row2.addWidget(self.btn_save_image)
+        camera_row2.addStretch(1)
+
+        camera_block.addLayout(camera_row1)
+        camera_block.addLayout(camera_row2)
+
+        ctrl.addLayout(scalar_layout)
+        ctrl.addLayout(colorbar_layout)
+        ctrl.addLayout(camera_block)
         right_layout.addLayout(ctrl)
 
         splitter.addWidget(right)
@@ -160,6 +251,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._poly: pv.PolyData | None = None
         self._display_case_row: dict | None = None  # case info corresponding to currently displayed VTP
         self._overlay_actor = None
+        self._default_view_vec = (-1, -1, 1)
 
         # -------------------------
         # Signals
@@ -174,6 +266,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.edit_vmin.editingFinished.connect(self.update_view)
         self.edit_vmax.editingFinished.connect(self.update_view)
         self.btn_auto_range.clicked.connect(self.clear_range)
+        self.btn_view_xp.clicked.connect(lambda: self.set_view_vector((1, 0, 0)))
+        self.btn_view_xn.clicked.connect(lambda: self.set_view_vector((-1, 0, 0)))
+        self.btn_view_yp.clicked.connect(lambda: self.set_view_vector((0, 1, 0)))
+        self.btn_view_yn.clicked.connect(lambda: self.set_view_vector((0, -1, 0)))
+        self.btn_view_zp.clicked.connect(lambda: self.set_view_vector((0, 0, 1)))
+        self.btn_view_zn.clicked.connect(lambda: self.set_view_vector((0, 0, -1)))
+        self.btn_view_iso_1.clicked.connect(self.set_view_iso_1)
+        self.btn_view_iso_2.clicked.connect(self.set_view_iso_2)
+        self.btn_save_image.clicked.connect(self.save_view_image)
         self.case_list.currentItemChanged.connect(self.on_case_changed)
 
     # -------------------------
@@ -186,6 +287,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.edit_vmin.setText("")
         self.edit_vmax.setText("")
         self.update_view()
+
+    def set_view_vector(self, vec):
+        self.plotter.view_vector(vec)
+        self.plotter.render()
+
+    def set_view_iso_1(self):
+        # (-X, -Y, +Z) view
+        self.plotter.view_vector((-1, -1, 1))
+        self.plotter.render()
+
+    def set_view_iso_2(self):
+        # (+X, -Y, -Z) view
+        self.plotter.view_vector((1, -1, -1))
+        self.plotter.render()
+
+    def save_view_image(self):
+        if self.plotter is None:
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save View Image",
+            str(Path.cwd()),
+            "PNG (*.png);;JPEG (*.jpg *.jpeg);;TIFF (*.tif *.tiff)",
+        )
+        if not path:
+            return
+        try:
+            self.plotter.screenshot(path)
+            self.logln(f"[OK] Saved image: {path}")
+        except Exception as e:
+            self.logln(f"[ERROR] Failed to save image: {e}")
 
     # -------------------------
     # Excel / Case list
@@ -419,6 +551,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_overlay()
         self.plotter.add_axes()
         self.plotter.reset_camera()
+        if self._default_view_vec is not None:
+            self.plotter.view_vector(self._default_view_vec)
         self.plotter.render()
 
 
