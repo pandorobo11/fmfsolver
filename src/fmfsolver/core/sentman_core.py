@@ -33,7 +33,7 @@ def sentman_dC_dA_vector(
     Tw: float,
     Aref: float,
     shielded: bool = False,
-) -> tuple[np.ndarray, float, float]:
+) -> np.ndarray:
     """Compute Sentman dC/dA vector and angular factors.
 
     If shielded=True, include only the reflected term (C); otherwise include A+B+C.
@@ -66,7 +66,7 @@ def sentman_dC_dA_vector(
         dC_dA = (C * n_in) / float(Aref)
     else:
         dC_dA = (A * Vhat + (B + C) * n_in) / float(Aref)
-    return dC_dA, eta, gamma
+    return dC_dA
 
 
 def stl_to_body(v_stl: np.ndarray) -> np.ndarray:

@@ -161,8 +161,6 @@ def run_case(row: dict, logfn) -> dict:
 
     C_face_stl = np.zeros((len(areas), 3), dtype=float)
     Cp_n = np.zeros(len(areas), dtype=float)
-    eta_arr = np.zeros(len(areas), dtype=float)
-    gamma_arr = np.zeros(len(areas), dtype=float)
     theta_deg = np.zeros(len(areas), dtype=float)
 
     C_force_stl = np.zeros(3, dtype=float)
@@ -172,7 +170,7 @@ def run_case(row: dict, logfn) -> dict:
         dot_nv = max(-1.0, min(1.0, dot_nv))
         theta_deg[i] = math.degrees(math.acos(dot_nv))
 
-        dC_dA, eta, gam = sentman_dC_dA_vector(
+        dC_dA = sentman_dC_dA_vector(
             Vhat=Vhat,
             n_out=normals_out_stl[i],
             S=S,
@@ -181,8 +179,6 @@ def run_case(row: dict, logfn) -> dict:
             Aref=Aref,
             shielded=shielded[i],
         )
-        eta_arr[i] = eta
-        gamma_arr[i] = gam
 
         Ci = dC_dA * areas[i]
         C_face_stl[i] = Ci
@@ -222,8 +218,6 @@ def run_case(row: dict, logfn) -> dict:
             "shielded": shielded.astype(np.uint8),
             "Cp_n": Cp_n,
             "theta_deg": theta_deg,
-            "eta": eta_arr,
-            "gamma": gamma_arr,
             "C_face_stl": C_face_stl,
             # NEW: face center scalars (STL axes, meters)
             "center_x_stl_m": centers_stl[:, 0],
