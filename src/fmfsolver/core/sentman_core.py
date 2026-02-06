@@ -39,6 +39,9 @@ def sentman_dC_dA_vector(
     If shielded=True, include only the reflected term (C); otherwise include A+B+C.
     Returns (dC_dA, eta, gamma).
     """
+    if shielded:
+        return np.zeros(3, dtype=float)
+
     Vhat = np.asarray(Vhat, dtype=float)
     n_out = np.asarray(n_out, dtype=float)
     n_in = -n_out
@@ -62,10 +65,7 @@ def sentman_dC_dA_vector(
         * ((eta * math.sqrt(math.pi) / S) * Phi + (1.0 / (S * S)) * E)
     )
 
-    if shielded:
-        dC_dA = (C * n_in) / float(Aref)
-    else:
-        dC_dA = (A * Vhat + (B + C) * n_in) / float(Aref)
+    dC_dA = (A * Vhat + (B + C) * n_in) / float(Aref)
     return dC_dA
 
 
