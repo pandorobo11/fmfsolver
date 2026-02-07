@@ -24,8 +24,8 @@ class CasesPanel(QtWidgets.QWidget):
         super().__init__(parent)
         layout = QtWidgets.QVBoxLayout(self)
 
-        self.xlsx_label = QtWidgets.QLabel("Input: (not selected)")
-        self.btn_pick_xlsx = QtWidgets.QPushButton("Select Input File")
+        self.input_label = QtWidgets.QLabel("Input: (not selected)")
+        self.btn_pick_input = QtWidgets.QPushButton("Select Input File")
         self.btn_run = QtWidgets.QPushButton("Run Selected Cases")
         self.btn_run.setEnabled(False)
 
@@ -50,8 +50,8 @@ class CasesPanel(QtWidgets.QWidget):
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(8000)
 
-        layout.addWidget(self.xlsx_label)
-        layout.addWidget(self.btn_pick_xlsx)
+        layout.addWidget(self.input_label)
+        layout.addWidget(self.btn_pick_input)
         layout.addWidget(QtWidgets.QLabel("Cases:"))
         layout.addWidget(self.case_table, 3)
         workers_layout = QtWidgets.QHBoxLayout()
@@ -64,9 +64,9 @@ class CasesPanel(QtWidgets.QWidget):
         layout.addWidget(self.log, 2)
 
         self.df_cases: pd.DataFrame | None = None
-        self.xlsx_path: str | None = None
+        self.input_path: str | None = None
 
-        self.btn_pick_xlsx.clicked.connect(self.pick_xlsx)
+        self.btn_pick_input.clicked.connect(self.pick_input_file)
         self.btn_run.clicked.connect(self.run_selected)
         self.case_table.itemSelectionChanged.connect(self.on_case_selection_changed)
 
@@ -74,7 +74,7 @@ class CasesPanel(QtWidgets.QWidget):
         """Append one log line to the panel log view."""
         self.log.appendPlainText(s)
 
-    def pick_xlsx(self):
+    def pick_input_file(self):
         """Open a file picker, read case definitions, and refresh the table."""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
@@ -84,13 +84,13 @@ class CasesPanel(QtWidgets.QWidget):
         )
         if not path:
             return
-        self.xlsx_path = path
-        self.xlsx_label.setText(f"Excel: {path}")
+        self.input_path = path
+        self.input_label.setText(f"Input: {path}")
 
         try:
             self.df_cases = read_cases(path)
         except Exception as e:
-            self.logln(f"[ERROR] Failed to read Excel: {e}")
+            self.logln(f"[ERROR] Failed to read input file: {e}")
             self.df_cases = None
             self.btn_run.setEnabled(False)
             return
@@ -172,7 +172,7 @@ class CasesPanel(QtWidgets.QWidget):
 
     def run_selected(self):
         """Run selected rows (or all rows) and write result CSV to chosen path."""
-        if self.df_cases is None or self.xlsx_path is None:
+        if self.df_cases is None or self.input_path is None:
             return
 
         sel = self.case_table.selectionModel().selectedRows()
@@ -186,7 +186,7 @@ class CasesPanel(QtWidgets.QWidget):
         else:
             df_sel = self.df_cases.copy().reset_index(drop=True)
 
-        out_summary = Path(self.xlsx_path)
+        out_summary = Path(self.input_path)
         out_dir = Path("outputs")
         out_dir.mkdir(parents=True, exist_ok=True)
         default_path = out_dir / f"{out_summary.stem}_result.csv"
