@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -63,6 +64,41 @@ DEFAULTS = {
 }
 
 
+@dataclass(frozen=True)
+class ValidationIssue:
+    """One structured validation error for an input case table."""
+
+    row_number: int | None
+    case_id: str | None
+    field: str | None
+    message: str
+
+
+class InputValidationError(ValueError):
+    """Raised when one or more input table validation checks fail."""
+
+    def __init__(self, issues: list[ValidationIssue]):
+        self.issues = issues
+        super().__init__(self._build_message())
+
+    def _build_message(self) -> str:
+        lines = ["Invalid input table:"]
+        for issue in self.issues:
+            parts = []
+            if issue.row_number is not None:
+                parts.append(f"row {issue.row_number}")
+            if issue.case_id:
+                parts.append(f"case_id='{issue.case_id}'")
+            if issue.field:
+                parts.append(issue.field)
+            prefix = ", ".join(parts)
+            if prefix:
+                lines.append(f"- {prefix}: {issue.message}")
+            else:
+                lines.append(f"- {issue.message}")
+        return "\n".join(lines)
+
+
 def _is_filled(value) -> bool:
     """Return True if a table cell should be treated as specified."""
     if value is None:
@@ -72,40 +108,44 @@ def _is_filled(value) -> bool:
     return str(value).strip() != ""
 
 
-def _row_label(df: pd.DataFrame, idx: int) -> str:
-    """Build a human-readable location string for validation messages."""
-    if "case_id" not in df.columns:
-        return f"row {idx + 2}"
-    case_id = str(df.at[idx, "case_id"]).strip()
-    if case_id:
-        return f"row {idx + 2} (case_id='{case_id}')"
-    return f"row {idx + 2} (case_id='<blank>')"
-
-
 def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     """Validate input rows and normalize dtypes used by downstream solver code."""
-    errors: list[str] = []
+    issues: list[ValidationIssue] = []
+
+    def add_issue(idx: int | None, field: str | None, message: str):
+        row_number = None if idx is None else int(idx) + 2
+        case_id = None
+        if idx is not None and "case_id" in df.columns:
+            cid = str(df.at[idx, "case_id"]).strip()
+            case_id = cid if cid else None
+        issues.append(
+            ValidationIssue(
+                row_number=row_number,
+                case_id=case_id,
+                field=field,
+                message=message,
+            )
+        )
 
     # Normalize and validate case_id first to improve all later error messages.
-    df["case_id"] = df["case_id"].astype(str).str.strip()
+    df["case_id"] = df["case_id"].where(df["case_id"].notna(), "").astype(str).str.strip()
     blank_ids = df["case_id"] == ""
     for idx in df.index[blank_ids]:
-        errors.append(f"{_row_label(df, int(idx))}: case_id must not be blank.")
+        add_issue(int(idx), "case_id", "must not be blank.")
 
     duplicate_ids = sorted(df.loc[df["case_id"].duplicated(keep=False), "case_id"].unique())
     if duplicate_ids:
-        errors.append(f"Duplicate case_id values are not allowed: {duplicate_ids}")
+        add_issue(None, "case_id", f"Duplicate case_id values are not allowed: {duplicate_ids}")
 
     # Validate stl_path and normalize entries to absolute paths resolved from input file dir.
     base_dir = input_path.parent
     for idx, raw in df["stl_path"].items():
-        label = _row_label(df, int(idx))
         if not _is_filled(raw):
-            errors.append(f"{label}: stl_path is required.")
+            add_issue(int(idx), "stl_path", "is required.")
             continue
         paths = [p.strip() for p in str(raw).split(";") if p.strip()]
         if not paths:
-            errors.append(f"{label}: stl_path has no valid entry.")
+            add_issue(int(idx), "stl_path", "has no valid entry.")
             continue
         resolved_paths: list[str] = []
         for p in paths:
@@ -116,9 +156,13 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
             elif not candidate.is_absolute() and (base_dir / candidate).exists():
                 resolved = (base_dir / candidate).resolve()
             else:
-                errors.append(
-                    f"{label}: STL file not found: '{p}' "
-                    f"(checked relative to '{base_dir}')."
+                add_issue(
+                    int(idx),
+                    "stl_path",
+                    (
+                        f"STL file not found: '{p}' "
+                        f"(checked relative to '{base_dir}')."
+                    ),
                 )
             if resolved is not None:
                 resolved_paths.append(str(resolved))
@@ -130,7 +174,7 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
         parsed = pd.to_numeric(df[col], errors="coerce")
         invalid = parsed.isna()
         for idx in df.index[invalid]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be numeric.")
+            add_issue(int(idx), col, "must be numeric.")
         df[col] = parsed
 
     # Optional mode columns: convert filled cells to numeric and keep empty as NaN.
@@ -141,14 +185,14 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
         parsed = pd.to_numeric(df[col].where(filled), errors="coerce")
         invalid = filled & parsed.isna()
         for idx in df.index[invalid]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be numeric when specified.")
+            add_issue(int(idx), col, "must be numeric when specified.")
         df[col] = parsed
 
     # Positive-only constraints.
     for col in POSITIVE_COLUMNS:
         invalid = df[col] <= 0.0
         for idx in df.index[invalid]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be > 0.")
+            add_issue(int(idx), col, "must be > 0.")
 
     # Mode constraints: exactly one of A(S+Ti) or B(Mach+Altitude) per row.
     mode_a_s = df["S"].notna()
@@ -159,51 +203,50 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     mode_a_partial = mode_a_s ^ mode_a_ti
     mode_b_partial = mode_b_mach ^ mode_b_alt
     for idx in df.index[mode_a_partial]:
-        errors.append(f"{_row_label(df, int(idx))}: Mode A requires both 'S' and 'Ti_K'.")
+        add_issue(int(idx), "S,Ti_K", "Mode A requires both 'S' and 'Ti_K'.")
     for idx in df.index[mode_b_partial]:
-        errors.append(
-            f"{_row_label(df, int(idx))}: Mode B requires both 'Mach' and 'Altitude_km'."
-        )
+        add_issue(int(idx), "Mach,Altitude_km", "Mode B requires both 'Mach' and 'Altitude_km'.")
 
     mode_a_ok = mode_a_s & mode_a_ti
     mode_b_ok = mode_b_mach & mode_b_alt
     both_modes = mode_a_ok & mode_b_ok
     neither_mode = (~mode_a_ok) & (~mode_b_ok)
     for idx in df.index[both_modes]:
-        errors.append(
-            f"{_row_label(df, int(idx))}: specify either Mode A or Mode B, not both."
-        )
+        add_issue(int(idx), "mode", "Specify either Mode A or Mode B, not both.")
     for idx in df.index[neither_mode]:
-        errors.append(
-            f"{_row_label(df, int(idx))}: specify one complete mode "
-            f"(Mode A: S+Ti_K, Mode B: Mach+Altitude_km)."
+        add_issue(
+            int(idx),
+            "mode",
+            (
+                "Specify one complete mode "
+                "(Mode A: S+Ti_K, Mode B: Mach+Altitude_km)."
+            ),
         )
 
     for col in ("S", "Ti_K", "Mach"):
         invalid = df[col].notna() & (df[col] <= 0.0)
         for idx in df.index[invalid]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be > 0 when specified.")
+            add_issue(int(idx), col, "must be > 0 when specified.")
 
     # Normalize flags and enforce 0/1 values.
     for col in FLAG_COLUMNS:
         parsed = pd.to_numeric(df[col], errors="coerce")
         invalid_numeric = parsed.isna()
         for idx in df.index[invalid_numeric]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be 0 or 1.")
+            add_issue(int(idx), col, "must be 0 or 1.")
         invalid_value = (~invalid_numeric) & (~parsed.isin([0, 1]))
         for idx in df.index[invalid_value]:
-            errors.append(f"{_row_label(df, int(idx))}: '{col}' must be 0 or 1.")
+            add_issue(int(idx), col, "must be 0 or 1.")
         df[col] = parsed.fillna(0).astype(int)
 
     # out_dir must be a non-empty string value.
     df["out_dir"] = df["out_dir"].astype(str).str.strip()
     blank_out = df["out_dir"] == ""
     for idx in df.index[blank_out]:
-        errors.append(f"{_row_label(df, int(idx))}: 'out_dir' must not be blank.")
+        add_issue(int(idx), "out_dir", "must not be blank.")
 
-    if errors:
-        head = "Invalid input table:"
-        raise ValueError(head + "\n- " + "\n- ".join(errors))
+    if issues:
+        raise InputValidationError(issues)
 
     return df
 
@@ -220,7 +263,8 @@ def read_cases(path: str) -> pd.DataFrame:
         from the input file directory.
 
     Raises:
-        ValueError: If the file format is unsupported or required columns are missing.
+        ValueError: If the file format is unsupported.
+        InputValidationError: If required columns are missing or row validation fails.
     """
     p = Path(path).expanduser()
     suffix = p.suffix.lower()
@@ -232,7 +276,15 @@ def read_cases(path: str) -> pd.DataFrame:
         raise ValueError(f"Unsupported input format: {p.suffix}")
     missing = [c for c in REQUIRED if c not in df.columns]
     if missing:
-        raise ValueError(f"Missing required columns: {missing}")
+        issues = [
+            ValidationIssue(
+                row_number=1,
+                case_id=None,
+                field="header",
+                message=f"Missing required columns: {missing}",
+            )
+        ]
+        raise InputValidationError(issues)
 
     for k, v in DEFAULTS.items():
         if k not in df.columns:

@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtWidgets
 
 from ..core.solver import build_case_signature, run_cases
 from ..io.csv_out import write_results_csv
-from ..io.io_cases import read_cases
+from ..io.io_cases import InputValidationError, read_cases
 
 
 class _CaseRunWorker(QtCore.QObject):
@@ -60,6 +60,64 @@ class _CaseRunWorker(QtCore.QObject):
 
     def _emit_progress(self, done: int, total: int):
         self.progress.emit(done, total)
+
+
+class _ValidationIssuesDialog(QtWidgets.QDialog):
+    """Tabular dialog for input validation issues."""
+
+    def __init__(self, file_path: str, issues, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Input Validation Errors")
+        self.resize(980, 420)
+        layout = QtWidgets.QVBoxLayout(self)
+
+        summary = QtWidgets.QLabel(
+            f"Failed to load input file:\n{file_path}\n\nValidation issues: {len(issues)}"
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        self.table = QtWidgets.QTableWidget(len(issues), 4)
+        self.table.setHorizontalHeaderLabels(["Row", "Case ID", "Field", "Message"])
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        self._issues = list(issues)
+        for row, issue in enumerate(self._issues):
+            row_text = "" if issue.row_number is None else str(issue.row_number)
+            case_id_text = issue.case_id or ""
+            field_text = issue.field or ""
+            message_text = issue.message
+            self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(row_text))
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(case_id_text))
+            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(field_text))
+            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(message_text))
+
+        self.table.resizeColumnsToContents()
+        layout.addWidget(self.table, 1)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        self.btn_copy = QtWidgets.QPushButton("Copy")
+        self.btn_close = QtWidgets.QPushButton("Close")
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_copy)
+        btn_row.addWidget(self.btn_close)
+        layout.addLayout(btn_row)
+
+        self.btn_copy.clicked.connect(self._copy_issues_to_clipboard)
+        self.btn_close.clicked.connect(self.accept)
+
+    def _copy_issues_to_clipboard(self):
+        lines = ["row\tcase_id\tfield\tmessage"]
+        for issue in self._issues:
+            row_text = "" if issue.row_number is None else str(issue.row_number)
+            lines.append(
+                f"{row_text}\t{issue.case_id or ''}\t{issue.field or ''}\t{issue.message}"
+            )
+        QtWidgets.QApplication.clipboard().setText("\n".join(lines))
 
 
 class CasesPanel(QtWidgets.QWidget):
@@ -147,17 +205,28 @@ class CasesPanel(QtWidgets.QWidget):
         )
         if not path:
             return
-        self.input_path = path
-        self.input_label.setText(f"Input: {path}")
 
         try:
-            self.df_cases = read_cases(path)
+            loaded = read_cases(path)
+        except InputValidationError as e:
+            self.logln(f"[ERROR] Invalid input file: {len(e.issues)} issue(s).")
+            dialog = _ValidationIssuesDialog(path, e.issues, self)
+            dialog.exec()
+            self.btn_run.setEnabled(self.df_cases is not None)
+            return
         except Exception as e:
             self.logln(f"[ERROR] Failed to read input file: {e}")
-            self.df_cases = None
-            self.btn_run.setEnabled(False)
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Input Read Error",
+                f"Failed to read input file:\n{path}\n\n{e}",
+            )
+            self.btn_run.setEnabled(self.df_cases is not None)
             return
 
+        self.input_path = path
+        self.input_label.setText(f"Input: {path}")
+        self.df_cases = loaded
         self._populate_case_table()
         self.btn_run.setEnabled(True)
         self.logln(f"[OK] Loaded {len(self.df_cases)} case(s). Select and run.")

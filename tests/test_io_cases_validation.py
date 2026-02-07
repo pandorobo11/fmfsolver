@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from fmfsolver.io.io_cases import read_cases
+from fmfsolver.io.io_cases import InputValidationError, read_cases
 
 
 class TestIoCasesValidation(unittest.TestCase):
@@ -78,7 +78,7 @@ class TestIoCasesValidation(unittest.TestCase):
             df = pd.DataFrame([row, row])
             df.to_csv(csv_path, index=False)
 
-            with self.assertRaisesRegex(ValueError, "Duplicate case_id values"):
+            with self.assertRaisesRegex(InputValidationError, "Duplicate case_id values"):
                 read_cases(str(csv_path))
 
     def test_read_cases_rejects_partial_mode_and_bad_flags(self):
@@ -94,11 +94,30 @@ class TestIoCasesValidation(unittest.TestCase):
             df = pd.DataFrame([row])
             df.to_csv(csv_path, index=False)
 
-            with self.assertRaises(ValueError) as cm:
+            with self.assertRaises(InputValidationError) as cm:
                 read_cases(str(csv_path))
             msg = str(cm.exception)
             self.assertIn("Mode A requires both 'S' and 'Ti_K'", msg)
-            self.assertIn("'save_vtp_on' must be 0 or 1", msg)
+            self.assertIn("save_vtp_on", msg)
+            self.assertIn("must be 0 or 1", msg)
+
+    def test_read_cases_exposes_structured_issues(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_structured_") as td:
+            td_path = Path(td)
+            stl_path = td_path / "mesh.stl"
+            stl_path.write_text("solid mesh\nendsolid mesh\n", encoding="utf-8")
+            csv_path = td_path / "input.csv"
+
+            row = self._base_row("mesh.stl")
+            row["case_id"] = ""
+            pd.DataFrame([row]).to_csv(csv_path, index=False)
+
+            with self.assertRaises(InputValidationError) as cm:
+                read_cases(str(csv_path))
+            issues = cm.exception.issues
+            self.assertGreaterEqual(len(issues), 1)
+            self.assertEqual(issues[0].row_number, 2)
+            self.assertEqual(issues[0].field, "case_id")
 
 
 if __name__ == "__main__":
