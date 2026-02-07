@@ -11,11 +11,15 @@ def vhat_from_alpha_beta_stl(alpha_deg: float, beta_deg: float) -> np.ndarray:
     """Return freestream unit vector in STL axes from aerodynamic angles.
 
     Let ``Vhat = [Vx_stl, Vy_stl, Vz_stl]`` with ``|Vhat| = 1``.
-    The implementation uses:
+    The implementation uses the numerically stable form:
+
+    ``Vhat = normalize([cos(alpha)cos(beta), -sin(beta)cos(alpha), sin(alpha)cos(beta)])``
+
+    where ``alpha = radians(alpha_deg)`` and ``beta = radians(beta_deg)``.
+    This is equivalent to:
 
     ``Vhat = normalize([1, -tan(beta), tan(alpha)])``
 
-    where ``alpha = radians(alpha_deg)`` and ``beta = radians(beta_deg)``.
     Therefore, in STL axes:
 
     - ``tan(alpha) = Vz_stl / Vx_stl``
@@ -30,9 +34,11 @@ def vhat_from_alpha_beta_stl(alpha_deg: float, beta_deg: float) -> np.ndarray:
     """
     a = math.radians(float(alpha_deg))
     b = math.radians(float(beta_deg))
-    v = np.array([1.0, -math.tan(b), math.tan(a)], dtype=float)
+    ca = math.cos(a)
+    cb = math.cos(b)
+    v = np.array([ca * cb, -math.sin(b) * ca, math.sin(a) * cb], dtype=float)
     n = np.linalg.norm(v)
-    if n == 0:
+    if n < 1e-14:
         raise ValueError("Invalid alpha/beta leading to zero direction.")
     return v / n
 

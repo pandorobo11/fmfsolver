@@ -94,7 +94,8 @@ Coordinate note:
 Definitions in STL axes:
 - `Vhat = [Vx_stl, Vy_stl, Vz_stl]` (freestream unit vector, `|Vhat|=1`)
 - `alpha = radians(alpha_deg)`, `beta = radians(beta_deg)`
-- `Vhat = normalize([1, -tan(beta), tan(alpha)])`
+- `Vhat = normalize([cos(alpha)cos(beta), -sin(beta)cos(alpha), sin(alpha)cos(beta)])`
+- Equivalent form: `Vhat = normalize([1, -tan(beta), tan(alpha)])`
 
 Equivalent geometric definitions:
 - `tan(alpha) = Vz_stl / Vx_stl`
@@ -105,7 +106,8 @@ Sign convention in STL axes (`Vhat = [Vx_stl, Vy_stl, Vz_stl]`):
 - `beta_deg > 0`: points freestream toward `-Y_stl` (`Vy_stl` decreases)
 
 Practical note:
-- Avoid values near `±90 deg` because `tan()` diverges.
+- The implementation uses `sin/cos`, so it avoids direct `tan()` overflow.
+- Near `|alpha| ~= 90 deg` or `|beta| ~= 90 deg`, `Vx_stl` becomes very small and the angle interpretation (`Vz_stl/Vx_stl`, `Vy_stl/Vx_stl`) is ill-conditioned.
 
 ### Sample Files
 
