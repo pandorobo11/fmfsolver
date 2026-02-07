@@ -49,6 +49,23 @@ class TestIoCasesValidation(unittest.TestCase):
             self.assertEqual(len(loaded), 1)
             self.assertEqual(str(loaded.loc[0, "case_id"]), "case_ok")
             self.assertEqual(int(loaded.loc[0, "shielding_on"]), 0)
+            self.assertEqual(str(loaded.loc[0, "stl_path"]), str(stl_path.resolve()))
+
+    def test_read_cases_normalizes_multi_stl_paths_to_absolute(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_multi_") as td:
+            td_path = Path(td)
+            stl1 = td_path / "a.stl"
+            stl2 = td_path / "b.stl"
+            stl1.write_text("solid a\nendsolid a\n", encoding="utf-8")
+            stl2.write_text("solid b\nendsolid b\n", encoding="utf-8")
+            csv_path = td_path / "input.csv"
+
+            row = self._base_row("a.stl;b.stl")
+            pd.DataFrame([row]).to_csv(csv_path, index=False)
+
+            loaded = read_cases(str(csv_path))
+            actual = str(loaded.loc[0, "stl_path"]).split(";")
+            self.assertEqual(actual, [str(stl1.resolve()), str(stl2.resolve())])
 
     def test_read_cases_rejects_duplicate_case_id(self):
         with tempfile.TemporaryDirectory(prefix="fmfsolver_io_dup_") as td:

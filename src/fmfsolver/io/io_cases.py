@@ -96,7 +96,7 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     if duplicate_ids:
         errors.append(f"Duplicate case_id values are not allowed: {duplicate_ids}")
 
-    # Validate stl_path strings and make sure each path resolves to an existing file.
+    # Validate stl_path and normalize entries to absolute paths resolved from input file dir.
     base_dir = input_path.parent
     for idx, raw in df["stl_path"].items():
         label = _row_label(df, int(idx))
@@ -107,16 +107,23 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
         if not paths:
             errors.append(f"{label}: stl_path has no valid entry.")
             continue
+        resolved_paths: list[str] = []
         for p in paths:
             candidate = Path(p).expanduser()
+            resolved: Path | None = None
             if candidate.exists():
-                continue
-            if not candidate.is_absolute() and (base_dir / candidate).exists():
-                continue
-            errors.append(
-                f"{label}: STL file not found: '{p}' "
-                f"(checked relative to '{base_dir}')."
-            )
+                resolved = candidate.resolve()
+            elif not candidate.is_absolute() and (base_dir / candidate).exists():
+                resolved = (base_dir / candidate).resolve()
+            else:
+                errors.append(
+                    f"{label}: STL file not found: '{p}' "
+                    f"(checked relative to '{base_dir}')."
+                )
+            if resolved is not None:
+                resolved_paths.append(str(resolved))
+        if resolved_paths:
+            df.at[idx, "stl_path"] = ";".join(resolved_paths)
 
     # Required numeric columns: must parse and be finite.
     for col in NUMERIC_REQUIRED:
@@ -209,6 +216,8 @@ def read_cases(path: str) -> pd.DataFrame:
 
     Returns:
         DataFrame containing required columns and default-filled optional ones.
+        ``stl_path`` is normalized to absolute path(s), resolving relative paths
+        from the input file directory.
 
     Raises:
         ValueError: If the file format is unsupported or required columns are missing.

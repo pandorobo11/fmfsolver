@@ -59,7 +59,7 @@ Supported formats:
 | Column | Required | Unit / Type | Meaning | Notes |
 |---|---|---|---|---|
 | `case_id` | Yes | string | Case identifier | Used in logs, output row key, and output file names (`<case_id>.vtp/.npz`). |
-| `stl_path` | Yes | string | STL file path(s) | Multiple STL files can be combined with `;` separator. Relative paths are resolved from current working directory. |
+| `stl_path` | Yes | string | STL file path(s) | Multiple STL files can be combined with `;` separator. Relative paths are resolved from the input file directory. |
 | `stl_scale_m_per_unit` | Yes | float | m per STL unit | Scale factor applied to STL coordinates. Example: STL in mm -> `0.001`. |
 | `alpha_deg` | Yes | deg | Angle of attack | Used to build freestream direction `Vhat`. |
 | `beta_deg` | Yes | deg | Sideslip angle | Used to build freestream direction `Vhat`. |
