@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Case execution pipeline for FMF coefficient computation."""
+
 import hashlib
 import json
 import math
@@ -22,6 +24,7 @@ from .shielding import compute_shield_mask
 
 
 def _is_filled(x) -> bool:
+    """Return True when a cell value should be treated as specified."""
     if x is None:
         return False
     if isinstance(x, float) and math.isnan(x):
@@ -30,6 +33,11 @@ def _is_filled(x) -> bool:
 
 
 def _mode_from_row(row: dict) -> str:
+    """Determine input mode for a case row.
+
+    Mode A requires ``S`` and ``Ti_K``.
+    Mode B requires ``Mach`` and ``Altitude_km``.
+    """
     A_ok = _is_filled(row.get("S")) and _is_filled(row.get("Ti_K"))
     B_ok = _is_filled(row.get("Mach")) and _is_filled(row.get("Altitude_km"))
     if A_ok and B_ok:
@@ -42,6 +50,11 @@ def _mode_from_row(row: dict) -> str:
 
 
 def build_case_signature(row: dict) -> str:
+    """Build a stable signature hash for case identity and cache validation.
+
+    The signature is stored in VTP metadata and used to verify that a VTP file
+    matches the currently selected case parameters.
+    """
     keys = [
         "case_id",
         "stl_path",
@@ -99,6 +112,7 @@ def build_case_signature(row: dict) -> str:
 
 
 def _compute_S_Ti_R(row: dict) -> tuple[float, float, str]:
+    """Return ``(S, Ti, mode)`` derived from case inputs."""
     mode = _mode_from_row(row)
 
     if mode == "A":
@@ -121,6 +135,19 @@ def _compute_S_Ti_R(row: dict) -> tuple[float, float, str]:
 
 
 def run_case(row: dict, logfn) -> dict:
+    """Run a single aerodynamic case and return summary outputs.
+
+    Side effects:
+        - Writes VTP when ``save_vtp_on`` is truthy.
+        - Writes NPZ when ``save_npz_on`` is truthy.
+
+    Args:
+        row: One case row converted to ``dict``.
+        logfn: Logging callback accepting one string argument.
+
+    Returns:
+        Dictionary with integrated coefficients, face counts, and output paths.
+    """
     case_id = str(row["case_id"])
     stl_paths = [p.strip() for p in str(row["stl_path"]).split(";") if p.strip()]
     scale = float(row["stl_scale_m_per_unit"])
@@ -282,13 +309,26 @@ def run_case(row: dict, logfn) -> dict:
     }
 
 def _null_log(_msg: str):
+    """No-op logger used in worker processes."""
     return None
 
+
 def _run_case_worker(row: dict) -> dict:
+    """Worker wrapper for ``ProcessPoolExecutor``."""
     return run_case(row, _null_log)
 
 
 def run_cases(df: pd.DataFrame, logfn, workers: int = 1) -> pd.DataFrame:
+    """Run multiple cases sequentially or in parallel.
+
+    Args:
+        df: Input cases dataframe.
+        logfn: Logging callback accepting one string argument.
+        workers: Process count for case-level parallel execution.
+
+    Returns:
+        Dataframe of per-case summary results, preserving input row order.
+    """
     df = df.reset_index(drop=True)
     total = len(df)
     if workers <= 1 or total <= 1:

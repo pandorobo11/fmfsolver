@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+"""Sentman free-molecular-flow core equations and coordinate transforms."""
+
 import math
 
 import numpy as np
 
 
 def vhat_from_alpha_beta_stl(alpha_deg: float, beta_deg: float) -> np.ndarray:
-    """Freestream unit vector in STL axes.
+    """Return freestream unit vector in STL axes from aerodynamic angles.
 
     Definitions:
       tan(alpha) = Vz / Vx
@@ -15,6 +17,13 @@ def vhat_from_alpha_beta_stl(alpha_deg: float, beta_deg: float) -> np.ndarray:
     Convention fix:
       For V>0, beta>0 should correspond to wind blowing toward -Y (Vy negative).
       Therefore we set Vy ∝ -tan(beta).
+
+    Args:
+        alpha_deg: Angle of attack in degrees.
+        beta_deg: Sideslip angle in degrees.
+
+    Returns:
+        Normalized freestream direction vector in STL axes, shape ``(3,)``.
     """
     a = math.radians(float(alpha_deg))
     b = math.radians(float(beta_deg))
@@ -34,10 +43,25 @@ def sentman_dC_dA_vector(
     Aref: float,
     shielded: bool = False,
 ) -> np.ndarray:
-    """Compute Sentman dC/dA vector and angular factors.
+    """Compute panel force-coefficient density vector ``dC/dA``.
 
-    If shielded=True, include only the reflected term (C); otherwise include A+B+C.
-    Returns (dC_dA, eta, gamma).
+    The implemented formula follows the codebase's Sentman convention:
+    ``dC/dA = (A*Vhat + (B + C)*n_in) / Aref``.
+
+    When ``shielded=True``, the panel contributes zero force and the function
+    returns a zero vector immediately.
+
+    Args:
+        Vhat: Freestream unit vector in STL axes, shape ``(3,)``.
+        n_out: Outward panel normal in STL axes, shape ``(3,)``.
+        S: Molecular speed ratio.
+        Ti: Free-stream translational temperature [K].
+        Tw: Wall temperature [K].
+        Aref: Reference area [m^2] for non-dimensionalization.
+        shielded: If true, skip force evaluation and return zero.
+
+    Returns:
+        Force-coefficient density vector in STL axes, shape ``(3,)``.
     """
     if shielded:
         return np.zeros(3, dtype=float)
@@ -69,13 +93,23 @@ def sentman_dC_dA_vector(
 
 
 def stl_to_body(v_stl: np.ndarray) -> np.ndarray:
-    """Convert a vector from STL axes to body axes."""
+    """Convert a vector from STL axes to body axes.
+
+    Axis mapping is ``body = (-x_stl, +y_stl, -z_stl)``.
+    """
     v = np.asarray(v_stl, dtype=float)
     return np.array([-v[0], v[1], -v[2]], dtype=float)
 
 
 def rot_y(alpha_rad: float) -> np.ndarray:
-    """Rotation matrix about +Y axis by alpha_rad (right-handed)."""
+    """Return right-handed rotation matrix about +Y by ``alpha_rad``.
+
+    Args:
+        alpha_rad: Rotation angle [rad].
+
+    Returns:
+        3x3 rotation matrix.
+    """
     c = math.cos(alpha_rad)
     s = math.sin(alpha_rad)
     return np.array(
