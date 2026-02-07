@@ -6,6 +6,11 @@ Sentman free-molecular-flow (FMF) panel solver for STL geometry.
 - CLI: batch execution from CSV/Excel input file.
 - Output: result CSV, per-case VTP, optional NPZ.
 
+## Versioning Rule
+
+- Current project version is managed in `pyproject.toml` (`[project].version`).
+- For this repository, update the version value on every commit.
+
 ## Install
 
 ### uv
