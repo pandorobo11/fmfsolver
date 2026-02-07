@@ -158,9 +158,10 @@ def run_case(row: dict, logfn) -> dict:
     Lref_Cn = float(row["Lref_Cn_m"])
 
     Tw = float(row["Tw_K"])
-    ref_body = np.array(
+    ref_stl = np.array(
         [float(row["ref_x_m"]), float(row["ref_y_m"]), float(row["ref_z_m"])], dtype=float
     )
+    ref_body = stl_to_body(ref_stl)
 
     alpha_deg = float(row["alpha_deg"])
     beta_deg = float(row["beta_deg"])

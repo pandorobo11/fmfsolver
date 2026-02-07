@@ -63,9 +63,9 @@ Supported formats:
 | `alpha_deg` | Yes | deg | Angle of attack | Used to build freestream direction `Vhat`. |
 | `beta_deg` | Yes | deg | Sideslip angle | Used to build freestream direction `Vhat`. |
 | `Tw_K` | Yes | K | Wall temperature | Used in Sentman coefficient term `C`. |
-| `ref_x_m` | Yes | m | Moment reference X | Moment reference point in **body axes**. |
-| `ref_y_m` | Yes | m | Moment reference Y | Moment reference point in **body axes**. |
-| `ref_z_m` | Yes | m | Moment reference Z | Moment reference point in **body axes**. |
+| `ref_x_m` | Yes | m | Moment reference X | Moment reference point in **STL axes** (input). Internally converted to body axes. |
+| `ref_y_m` | Yes | m | Moment reference Y | Moment reference point in **STL axes** (input). Internally converted to body axes. |
+| `ref_z_m` | Yes | m | Moment reference Z | Moment reference point in **STL axes** (input). Internally converted to body axes. |
 | `Aref_m2` | Yes | m^2 | Reference area | Used for force coefficient normalization (`CA`, `CY`, `CN`, `CD`, `CL`, `Cp_n`). |
 | `Lref_Cl_m` | Yes | m | Roll moment reference length | Denominator for `Cl`. Must be non-zero. |
 | `Lref_Cm_m` | Yes | m | Pitch moment reference length | Denominator for `Cm`. Must be non-zero. |
@@ -87,7 +87,7 @@ Mode selection rules:
 
 Coordinate note:
 - Internal conversion from STL to body axes is `body = (-x_stl, +y_stl, -z_stl)`.
-- Therefore `ref_x_m/ref_y_m/ref_z_m` should follow body-axis definition.
+- `ref_x_m/ref_y_m/ref_z_m` must be provided in STL axes.
 
 ### Angle Definition (`alpha_deg`, `beta_deg`)
 
