@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from pathlib import Path
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -21,6 +24,11 @@ from .sentman_core import (
     vhat_from_alpha_beta_stl,
 )
 from .shielding import compute_shield_mask
+
+try:
+    SOLVER_VERSION = version("fmfsolver")
+except PackageNotFoundError:
+    SOLVER_VERSION = "dev"
 
 
 def _is_filled(x) -> bool:
@@ -148,6 +156,9 @@ def run_case(row: dict, logfn) -> dict:
     Returns:
         Dictionary with integrated coefficients, face counts, and output paths.
     """
+    started_at_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    t0 = time.perf_counter()
+
     case_id = str(row["case_id"])
     stl_paths = [p.strip() for p in str(row["stl_path"]).split(";") if p.strip()]
     scale = float(row["stl_scale_m_per_unit"])
@@ -258,7 +269,11 @@ def run_case(row: dict, logfn) -> dict:
             mesh.vertices,
             mesh.faces,
             cell_data,
-            field_data={"case_id": case_id, "case_signature": signature},
+            field_data={
+                "case_id": case_id,
+                "case_signature": signature,
+                "solver_version": SOLVER_VERSION,
+            },
         )
 
     if save_npz:
@@ -289,8 +304,16 @@ def run_case(row: dict, logfn) -> dict:
             Cp_n=Cp_n,
         )
 
+    finished_at_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    elapsed_s = time.perf_counter() - t0
+
     return {
         "case_id": case_id,
+        "solver_version": SOLVER_VERSION,
+        "case_signature": signature,
+        "run_started_at_utc": started_at_utc,
+        "run_finished_at_utc": finished_at_utc,
+        "run_elapsed_s": float(elapsed_s),
         "mode": mode,
         "S": float(S),
         "Ti_K": float(Ti),

@@ -68,6 +68,11 @@ class TestSolverPipeline(unittest.TestCase):
             self.assertGreater(result["faces"], 0)
             self.assertEqual(result["vtp_path"], "")
             self.assertEqual(result["npz_path"], "")
+            self.assertEqual(result["case_signature"], build_case_signature(row))
+            self.assertTrue(str(result["solver_version"]).strip() != "")
+            self.assertTrue(str(result["run_started_at_utc"]).endswith("Z"))
+            self.assertTrue(str(result["run_finished_at_utc"]).endswith("Z"))
+            self.assertGreaterEqual(float(result["run_elapsed_s"]), 0.0)
             for key in ("CA", "CY", "CN", "Cl", "Cm", "Cn", "CD", "CL"):
                 self.assertTrue(math.isfinite(float(result[key])), key)
             self.assertTrue(Path(td).exists())
@@ -101,6 +106,11 @@ class TestSolverPipeline(unittest.TestCase):
             self.assertGreater(result["faces"], 0)
             self.assertEqual(result["vtp_path"], "")
             self.assertEqual(result["npz_path"], "")
+            self.assertEqual(result["case_signature"], build_case_signature(row))
+            self.assertTrue(str(result["solver_version"]).strip() != "")
+            self.assertTrue(str(result["run_started_at_utc"]).endswith("Z"))
+            self.assertTrue(str(result["run_finished_at_utc"]).endswith("Z"))
+            self.assertGreaterEqual(float(result["run_elapsed_s"]), 0.0)
             for key in ("S", "Ti_K", "CA", "CY", "CN", "CD", "CL"):
                 self.assertTrue(math.isfinite(float(result[key])), key)
 

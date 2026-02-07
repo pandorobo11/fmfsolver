@@ -164,6 +164,12 @@ uv run fmfsolver-cli --input samples/input_template.csv -o outputs/custom_result
 - Result summary CSV:
   - default: `outputs/<input_stem>_result.csv` (CLI)
   - GUI: chosen in save dialog
+  - includes traceability columns:
+    - `solver_version`
+    - `case_signature`
+    - `run_started_at_utc`
+    - `run_finished_at_utc`
+    - `run_elapsed_s`
 - Per-case VTP:
   - `<out_dir>/<case_id>.vtp` when `save_vtp_on=1`
 - Optional NPZ:
