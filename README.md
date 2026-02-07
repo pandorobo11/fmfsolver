@@ -159,24 +159,6 @@ uv run fmfsolver-cli --input samples/input_template.csv -j 4 --cases case_A case
 uv run fmfsolver-cli --input samples/input_template.csv -o outputs/custom_result.csv
 ```
 
-### End-to-End Verification (Flat Plate)
-
-Compare full `run_case` outputs against Sentman one-sided flat-plate formulas:
-
-```bash
-uv run fmfsolver-verify-flat-plate
-```
-
-Example with custom sweep/tolerance:
-```bash
-uv run fmfsolver-verify-flat-plate \
-  --S 1,10,100 \
-  --alpha-deg 0,10,30,60 \
-  --ti-k 1000 \
-  --tr-over-ti 1.0 \
-  --tol 1e-10
-```
-
 ## Output Files
 
 - Result summary CSV:

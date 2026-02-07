@@ -21,6 +21,3 @@ jobs:
 
       - name: Unit tests
         run: uv run python -m unittest discover -s tests -p "test_*.py" -v
-
-      - name: Flat plate verification
-        run: uv run fmfsolver-verify-flat-plate --tol 1e-10

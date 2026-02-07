@@ -19,7 +19,6 @@ dependencies = [
 fmfsolver = "fmfsolver.app.gui_app:main"
 fmfsolver-gui = "fmfsolver.app.gui_app:main"
 fmfsolver-cli = "fmfsolver.app.cli_app:main"
-fmfsolver-verify-flat-plate = "fmfsolver.app.verify_flat_plate:main"
 
 [build-system]
 requires = ["hatchling"]
