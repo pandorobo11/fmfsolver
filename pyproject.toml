@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 fmfsolver = "fmfsolver.main:main"
+fmfsolver-cli = "fmfsolver.app.cli_app:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -15,6 +15,16 @@ python -m pip install .
 uv run fmfsolver
 ```
 
+## Run (CLI)
+```bash
+uv run fmfsolver-cli --input samples/input_template.csv
+```
+
+With options:
+```bash
+uv run fmfsolver-cli --input samples/input_template.csv --workers 4 --output outputs/result.csv --cases case_A case_C_shield
+```
+
 ## Notes
 - Input is a CSV or Excel file (header row + cases rows).
 - Output summary is written as `outputs/<input_stem>_result.csv`.
