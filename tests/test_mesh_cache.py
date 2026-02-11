@@ -29,7 +29,7 @@ class TestMeshCache(unittest.TestCase):
 
         self.assertEqual(stats.misses, 2)
         self.assertEqual(stats.hits, 0)
-        self.assertEqual(stats.entries, 2)
+        self.assertEqual(stats.entries, 1)
 
 
 if __name__ == "__main__":

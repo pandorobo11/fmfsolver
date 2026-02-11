@@ -113,11 +113,13 @@ Practical note:
 ### Sample Files
 
 - `samples/input_template.csv`
+- `samples/input_benchmark_rtree.csv`
 - `samples/stl/cube.stl`
 - `samples/stl/capsule.stl`
 - `samples/stl/plate.stl`
 - `samples/stl/plate_offset_x2.stl`
 - `samples/stl/double_plate.stl`
+- `samples/stl/benchmark/satellite.stl`
 
 ## GUI Manual (Simple)
 
@@ -159,6 +161,27 @@ uv run fmfsolver-cli --input samples/input_template.csv -j 4 --cases baseline_cu
 # Specify output path
 uv run fmfsolver-cli --input samples/input_template.csv -o outputs/custom_result.csv
 ```
+
+## Benchmark (rtree)
+
+`samples/input_benchmark_rtree.csv` and `samples/stl/benchmark/satellite.stl` are provided
+for runtime/memory profiling on the current `rtree` setup.
+
+```bash
+# 1 run, 1 worker
+uv run python scripts/benchmark_rtree.py
+
+# 3 runs, 8 workers
+uv run python scripts/benchmark_rtree.py --workers 8 --repeat 3
+```
+
+Main outputs:
+- `outputs/benchmark_rtree_metrics.csv`
+  - `wall_elapsed_s`: wall-clock elapsed time per run
+  - `peak_rss_combined_mib`: approximate peak RSS (`self + children`)
+  - `python_peak_alloc_mib`: peak Python allocation from `tracemalloc`
+- Optional per-run result CSV (`--write-results`)
+  - `outputs/benchmark_rtree_result_01.csv`, ...
 
 ## Output Files
 

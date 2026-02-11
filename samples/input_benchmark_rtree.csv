@@ -1,0 +1,11 @@
+case_id,stl_path,stl_scale_m_per_unit,alpha_deg,beta_deg,Tw_K,ref_x_m,ref_y_m,ref_z_m,Aref_m2,Lref_Cl_m,Lref_Cm_m,Lref_Cn_m,S,Ti_K,Mach,Altitude_km,shielding_on,save_vtp_on,save_npz_on,out_dir
+bench_satellite_shield_off_a0_b0,stl/benchmark/satellite.stl,1,0,0,300,0,0,0,1,1,1,1,5.0,300.0,,,0,0,0,outputs/benchmark
+bench_satellite_shield_off_a10_b0,stl/benchmark/satellite.stl,1,10,0,300,0,0,0,1,1,1,1,5.0,300.0,,,0,0,0,outputs/benchmark
+bench_satellite_shield_off_a20_b0,stl/benchmark/satellite.stl,1,20,0,300,0,0,0,1,1,1,1,5.0,300.0,,,0,0,0,outputs/benchmark
+bench_satellite_shield_on_a0_b0,stl/benchmark/satellite.stl,1,0,0,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a5_b0,stl/benchmark/satellite.stl,1,5,0,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a10_b0,stl/benchmark/satellite.stl,1,10,0,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a15_b0,stl/benchmark/satellite.stl,1,15,0,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a20_b0,stl/benchmark/satellite.stl,1,20,0,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a10_b10,stl/benchmark/satellite.stl,1,10,10,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
+bench_satellite_shield_on_a10_b20,stl/benchmark/satellite.stl,1,10,20,300,0,0,0,1,1,1,1,5.0,300.0,,,1,0,0,outputs/benchmark
