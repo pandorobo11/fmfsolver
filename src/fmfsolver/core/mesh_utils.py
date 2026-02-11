@@ -46,7 +46,7 @@ _CACHE_LOCK = Lock()
 _MESH_CACHE: OrderedDict[tuple, MeshData] = OrderedDict()
 _CACHE_HITS = 0
 _CACHE_MISSES = 0
-_MESH_CACHE_MAX = 16
+_MESH_CACHE_MAX = 1
 
 
 def _mesh_cache_key(stl_paths: List[str], scale_m_per_unit: float) -> tuple:
