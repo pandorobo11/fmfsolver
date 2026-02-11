@@ -27,15 +27,7 @@ jobs:
         run: uv sync --locked --extra rayaccel
 
       - name: Verify Embree backend availability
-        run: |
-          uv run python - <<'PY'
-          import trimesh
-          from trimesh import ray
-          print("trimesh_version:", trimesh.__version__)
-          print("has_embree:", ray.has_embree)
-          if not ray.has_embree:
-              raise SystemExit("Embree backend is required in CI but not available.")
-          PY
+        run: uv run python -c "import trimesh; from trimesh import ray; print('trimesh_version:', trimesh.__version__); print('has_embree:', ray.has_embree); (_ for _ in ()).throw(SystemExit('Embree backend is required in CI but not available.')) if not ray.has_embree else None"
 
       - name: Unit tests
         run: uv run python -m unittest discover -s tests -p "test_*.py" -v
