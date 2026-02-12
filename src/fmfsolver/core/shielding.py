@@ -24,7 +24,7 @@ def _resolve_shield_cache_max() -> int:
     """Return max number of cached shield masks kept in this process."""
     raw = os.getenv("FMFSOLVER_SHIELD_CACHE_MAX", "").strip()
     if not raw:
-        return 0
+        return 1
     try:
         value = int(raw)
     except ValueError as exc:
