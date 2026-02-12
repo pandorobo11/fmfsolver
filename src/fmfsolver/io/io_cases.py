@@ -55,11 +55,13 @@ POSITIVE_COLUMNS = {
 }
 
 FLAG_COLUMNS = ["shielding_on", "save_vtp_on", "save_npz_on"]
+RAY_BACKEND_VALUES = {"auto", "rtree", "embree"}
 
 DEFAULTS = {
     "shielding_on": 0,
     "save_vtp_on": 1,
     "save_npz_on": 0,
+    "ray_backend": "auto",
     "out_dir": "outputs",
 }
 
@@ -238,6 +240,17 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
         for idx in df.index[invalid_value]:
             add_issue(int(idx), col, "must be 0 or 1.")
         df[col] = parsed.fillna(0).astype(int)
+
+    # Normalize ray backend selector.
+    df["ray_backend"] = (
+        df["ray_backend"].where(df["ray_backend"].notna(), "auto").astype(str).str.strip().str.lower()
+    )
+    blank_backend = df["ray_backend"] == ""
+    if blank_backend.any():
+        df.loc[blank_backend, "ray_backend"] = "auto"
+    invalid_backend = ~df["ray_backend"].isin(RAY_BACKEND_VALUES)
+    for idx in df.index[invalid_backend]:
+        add_issue(int(idx), "ray_backend", "must be one of: auto, rtree, embree.")
 
     # out_dir must be a non-empty string value.
     df["out_dir"] = df["out_dir"].astype(str).str.strip()

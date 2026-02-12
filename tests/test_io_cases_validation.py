@@ -49,6 +49,7 @@ class TestIoCasesValidation(unittest.TestCase):
             self.assertEqual(len(loaded), 1)
             self.assertEqual(str(loaded.loc[0, "case_id"]), "case_ok")
             self.assertEqual(int(loaded.loc[0, "shielding_on"]), 0)
+            self.assertEqual(str(loaded.loc[0, "ray_backend"]), "auto")
             self.assertEqual(str(loaded.loc[0, "stl_path"]), str(stl_path.resolve()))
 
     def test_read_cases_normalizes_multi_stl_paths_to_absolute(self):
@@ -100,6 +101,25 @@ class TestIoCasesValidation(unittest.TestCase):
             self.assertIn("Mode A requires both 'S' and 'Ti_K'", msg)
             self.assertIn("save_vtp_on", msg)
             self.assertIn("must be 0 or 1", msg)
+
+    def test_read_cases_accepts_and_validates_ray_backend(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_backend_") as td:
+            td_path = Path(td)
+            stl_path = td_path / "mesh.stl"
+            stl_path.write_text("solid mesh\nendsolid mesh\n", encoding="utf-8")
+            csv_path = td_path / "input.csv"
+
+            row = self._base_row("mesh.stl")
+            row["ray_backend"] = "rtree"
+            pd.DataFrame([row]).to_csv(csv_path, index=False)
+            loaded = read_cases(str(csv_path))
+            self.assertEqual(str(loaded.loc[0, "ray_backend"]), "rtree")
+
+            row_bad = self._base_row("mesh.stl")
+            row_bad["ray_backend"] = "invalid_backend"
+            pd.DataFrame([row_bad]).to_csv(csv_path, index=False)
+            with self.assertRaisesRegex(InputValidationError, "ray_backend"):
+                read_cases(str(csv_path))
 
     def test_read_cases_exposes_structured_issues(self):
         with tempfile.TemporaryDirectory(prefix="fmfsolver_io_structured_") as td:

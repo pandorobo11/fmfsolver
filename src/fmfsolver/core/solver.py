@@ -25,7 +25,7 @@ from .sentman_core import (
     stl_to_body,
     vhat_from_alpha_beta_stl,
 )
-from .shielding import compute_shield_mask
+from .shielding import compute_shield_mask_with_backend
 
 try:
     SOLVER_VERSION = version("fmfsolver")
@@ -103,6 +103,7 @@ def build_case_signature(row: dict) -> str:
         "Mach",
         "Altitude_km",
         "shielding_on",
+        "ray_backend",
     ]
     numeric_keys = {
         "stl_scale_m_per_unit",
@@ -209,7 +210,7 @@ def _shield_reuse_sort_key(row: pd.Series, index: int) -> tuple:
     """Return execution sort key to cluster reusable shield-mask cases.
 
     Reuse condition is based on mesh identity and flow direction:
-    ``stl_path``, ``stl_scale_m_per_unit``, ``alpha_deg``, ``beta_deg``.
+    ``stl_path``, ``stl_scale_m_per_unit``, ``alpha_deg``, ``beta_deg``, ``ray_backend``.
     Non-shielding cases are kept after shielding cases in input order.
     """
     try:
@@ -223,7 +224,8 @@ def _shield_reuse_sort_key(row: pd.Series, index: int) -> tuple:
     scale = round(float(row.get("stl_scale_m_per_unit", 1.0)), 12)
     alpha = round(float(row.get("alpha_deg", 0.0)), 12)
     beta = round(float(row.get("beta_deg", 0.0)), 12)
-    return (0, stl_paths, scale, alpha, beta, index)
+    ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
+    return (0, stl_paths, scale, alpha, beta, ray_backend, index)
 
 
 def _build_execution_order(df: pd.DataFrame) -> list[int]:
@@ -271,6 +273,7 @@ def run_case(row: dict, logfn) -> dict:
     beta_deg = float(row["beta_deg"])
 
     shielding_on = bool(int(row.get("shielding_on", 0)))
+    ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
     save_vtp = bool(int(row.get("save_vtp_on", 1)))
     save_npz = bool(int(row.get("save_npz_on", 0)))
     out_dir = Path(str(row.get("out_dir", "outputs"))).expanduser()
@@ -290,9 +293,15 @@ def run_case(row: dict, logfn) -> dict:
     stl_paths_order = md.stl_paths_order
 
     if shielding_on:
-        shielded = compute_shield_mask(mesh, centers_stl, Vhat)
+        shielded, ray_backend_used = compute_shield_mask_with_backend(
+            mesh=mesh,
+            centers_m=centers_stl,
+            Vhat=Vhat,
+            ray_backend=ray_backend,
+        )
     else:
         shielded = np.zeros(len(areas), dtype=bool)
+        ray_backend_used = "not_used"
 
     n_faces = len(areas)
     num_components = len(stl_paths_order)
@@ -394,6 +403,7 @@ def run_case(row: dict, logfn) -> dict:
                 "case_signature": signature,
                 "solver_version": SOLVER_VERSION,
                 "stl_count": int(num_components),
+                "ray_backend_used": ray_backend_used,
                 "stl_paths_json": json.dumps(list(stl_paths_order), ensure_ascii=True),
             },
         )
@@ -426,6 +436,7 @@ def run_case(row: dict, logfn) -> dict:
             Cp_n=Cp_n,
             face_stl_index=face_stl_index,
             stl_paths=np.array(stl_paths_order, dtype=object),
+            ray_backend_used=ray_backend_used,
         )
 
     finished_at_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -443,6 +454,7 @@ def run_case(row: dict, logfn) -> dict:
         "Ti_K": float(Ti),
         "Tw_K": float(Tw),
         "scope": "total",
+        "ray_backend_used": ray_backend_used,
         "component_id": "",
         "component_stl_path": "",
         "CA": CA,

@@ -4,7 +4,9 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pyvista as pv
 
@@ -167,6 +169,7 @@ class TestSolverPipeline(unittest.TestCase):
             self.assertEqual(result["npz_path"], "")
             self.assertEqual(result["case_signature"], build_case_signature(row))
             self.assertTrue(str(result["solver_version"]).strip() != "")
+            self.assertEqual(result["ray_backend_used"], "not_used")
             self.assertTrue(str(result["run_started_at_utc"]).endswith("Z"))
             self.assertTrue(str(result["run_finished_at_utc"]).endswith("Z"))
             self.assertGreaterEqual(float(result["run_elapsed_s"]), 0.0)
@@ -205,11 +208,54 @@ class TestSolverPipeline(unittest.TestCase):
             self.assertEqual(result["npz_path"], "")
             self.assertEqual(result["case_signature"], build_case_signature(row))
             self.assertTrue(str(result["solver_version"]).strip() != "")
+            self.assertEqual(result["ray_backend_used"], "not_used")
             self.assertTrue(str(result["run_started_at_utc"]).endswith("Z"))
             self.assertTrue(str(result["run_finished_at_utc"]).endswith("Z"))
             self.assertGreaterEqual(float(result["run_elapsed_s"]), 0.0)
             for key in ("S", "Ti_K", "CA", "CY", "CN", "CD", "CL"):
                 self.assertTrue(math.isfinite(float(result[key])), key)
+
+    def test_run_case_forwards_ray_backend_to_shielding(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_test_") as td:
+            row = {
+                "case_id": "test_ray_backend",
+                "stl_path": "samples/stl/cube.stl",
+                "stl_scale_m_per_unit": 1.0,
+                "alpha_deg": 5.0,
+                "beta_deg": 0.0,
+                "Tw_K": 300.0,
+                "ref_x_m": 0.0,
+                "ref_y_m": 0.0,
+                "ref_z_m": 0.0,
+                "Aref_m2": 1.0,
+                "Lref_Cl_m": 1.0,
+                "Lref_Cm_m": 1.0,
+                "Lref_Cn_m": 1.0,
+                "S": 5.0,
+                "Ti_K": 300.0,
+                "shielding_on": 1,
+                "ray_backend": "rtree",
+                "save_vtp_on": 0,
+                "save_npz_on": 0,
+                "out_dir": td,
+            }
+
+            def _zeros_mask(mesh, centers_m, Vhat, batch_size=None, ray_backend="auto"):
+                _ = mesh
+                _ = batch_size
+                _ = Vhat
+                _ = ray_backend
+                return np.zeros(len(centers_m), dtype=bool), "rtree"
+
+            with patch(
+                "fmfsolver.core.solver.compute_shield_mask_with_backend",
+                side_effect=_zeros_mask,
+            ) as mocked:
+                result = run_case(row, lambda _msg: None)
+
+            self.assertEqual(mocked.call_count, 1)
+            self.assertEqual(mocked.call_args.kwargs.get("ray_backend"), "rtree")
+            self.assertEqual(result["ray_backend_used"], "rtree")
 
     def test_run_cases_cancel_before_start(self):
         df = pd.DataFrame(

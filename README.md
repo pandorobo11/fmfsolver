@@ -89,6 +89,7 @@ Supported formats:
 | `Mach` | Mode B only | float | Mach number | Used with `Altitude_km` to derive `S` and `Ti_K` from US1976. |
 | `Altitude_km` | Mode B only | km | Geometric altitude | Used with `Mach` for atmospheric lookup. |
 | `shielding_on` | No | 0/1 int | Enable shielding | `1`: ray-casting shielding on, `0`: off. Default `0`. |
+| `ray_backend` | No | string | Ray intersector backend | `auto` (default), `rtree`, or `embree`. Use `rtree` when you want to avoid Embree behavior differences. |
 | `save_vtp_on` | No | 0/1 int | Write VTP file | `1`: write `<out_dir>/<case_id>.vtp`. Default `1`. |
 | `save_npz_on` | No | 0/1 int | Write NPZ file | `1`: write `<out_dir>/<case_id>.npz`. Default `0`. |
 | `out_dir` | No | path string | Output directory for per-case files | Used for VTP/NPZ only. Default `outputs`. |
@@ -208,6 +209,7 @@ Main outputs:
   - includes traceability columns:
     - `solver_version`
     - `case_signature`
+    - `ray_backend_used`
     - `run_started_at_utc`
     - `run_finished_at_utc`
     - `run_elapsed_s`
