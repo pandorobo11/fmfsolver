@@ -100,6 +100,17 @@ Mode selection rules:
 - Do not provide both Mode A and Mode B in one row.
 - Do not leave both mode pairs incomplete.
 
+### Ray Backend (`ray_backend`)
+
+- `auto` (default): use Embree when available, otherwise `rtree`.
+- `embree`: generally faster ray casting. Useful for large shielding workloads.
+- `rtree`: generally slower, but useful as a reference backend when you want to avoid Embree-specific hit differences.
+
+Practical guidance:
+- Start with `auto`.
+- If shielding results are sensitive and you want a conservative cross-check, rerun the same case with `ray_backend=rtree`.
+- `ray_backend_used` in result CSV and VTP metadata records the backend actually used.
+
 Coordinate note:
 - Internal conversion from STL to body axes is `body = (-x_stl, +y_stl, -z_stl)`.
 - `ref_x_m/ref_y_m/ref_z_m` must be provided in STL axes.
