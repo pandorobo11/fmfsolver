@@ -56,12 +56,14 @@ POSITIVE_COLUMNS = {
 
 FLAG_COLUMNS = ["shielding_on", "save_vtp_on", "save_npz_on"]
 RAY_BACKEND_VALUES = {"auto", "rtree", "embree"}
+SHIELD_RAYS_MODE_VALUES = {"auto", "fast", "precise"}
 
 DEFAULTS = {
     "shielding_on": 0,
     "save_vtp_on": 1,
     "save_npz_on": 0,
     "ray_backend": "auto",
+    "shield_rays_mode": "auto",
     "out_dir": "outputs",
 }
 
@@ -251,6 +253,15 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     invalid_backend = ~df["ray_backend"].isin(RAY_BACKEND_VALUES)
     for idx in df.index[invalid_backend]:
         add_issue(int(idx), "ray_backend", "must be one of: auto, rtree, embree.")
+
+    # Normalize shielding rays mode.
+    raw_modes = df["shield_rays_mode"].where(df["shield_rays_mode"].notna(), "auto")
+    mode_norm = raw_modes.astype(str).str.strip().str.lower()
+    mode_norm = mode_norm.replace({"": "auto"})
+    invalid_mode = ~mode_norm.isin(SHIELD_RAYS_MODE_VALUES)
+    for idx in df.index[invalid_mode]:
+        add_issue(int(idx), "shield_rays_mode", "must be one of: auto, fast, precise.")
+    df["shield_rays_mode"] = mode_norm
 
     # out_dir must be a non-empty string value.
     df["out_dir"] = df["out_dir"].astype(str).str.strip()

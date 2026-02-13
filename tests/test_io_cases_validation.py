@@ -50,6 +50,7 @@ class TestIoCasesValidation(unittest.TestCase):
             self.assertEqual(str(loaded.loc[0, "case_id"]), "case_ok")
             self.assertEqual(int(loaded.loc[0, "shielding_on"]), 0)
             self.assertEqual(str(loaded.loc[0, "ray_backend"]), "auto")
+            self.assertEqual(str(loaded.loc[0, "shield_rays_mode"]), "auto")
             self.assertEqual(str(loaded.loc[0, "stl_path"]), str(stl_path.resolve()))
 
     def test_read_cases_normalizes_multi_stl_paths_to_absolute(self):
@@ -119,6 +120,31 @@ class TestIoCasesValidation(unittest.TestCase):
             row_bad["ray_backend"] = "invalid_backend"
             pd.DataFrame([row_bad]).to_csv(csv_path, index=False)
             with self.assertRaisesRegex(InputValidationError, "ray_backend"):
+                read_cases(str(csv_path))
+
+    def test_read_cases_accepts_and_validates_shield_rays_mode(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_shield_rays_") as td:
+            td_path = Path(td)
+            stl_path = td_path / "mesh.stl"
+            stl_path.write_text("solid mesh\nendsolid mesh\n", encoding="utf-8")
+            csv_path = td_path / "input.csv"
+
+            row = self._base_row("mesh.stl")
+            row["shield_rays_mode"] = "precise"
+            pd.DataFrame([row]).to_csv(csv_path, index=False)
+            loaded = read_cases(str(csv_path))
+            self.assertEqual(str(loaded.loc[0, "shield_rays_mode"]), "precise")
+
+            row_bad = self._base_row("mesh.stl")
+            row_bad["shield_rays_mode"] = "slow"
+            pd.DataFrame([row_bad]).to_csv(csv_path, index=False)
+            with self.assertRaisesRegex(InputValidationError, "shield_rays_mode"):
+                read_cases(str(csv_path))
+
+            row_bad_num = self._base_row("mesh.stl")
+            row_bad_num["shield_rays_mode"] = "3"
+            pd.DataFrame([row_bad_num]).to_csv(csv_path, index=False)
+            with self.assertRaisesRegex(InputValidationError, "shield_rays_mode"):
                 read_cases(str(csv_path))
 
     def test_read_cases_exposes_structured_issues(self):

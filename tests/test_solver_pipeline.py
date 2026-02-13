@@ -235,16 +235,25 @@ class TestSolverPipeline(unittest.TestCase):
                 "Ti_K": 300.0,
                 "shielding_on": 1,
                 "ray_backend": "rtree",
+                "shield_rays_mode": "precise",
                 "save_vtp_on": 0,
                 "save_npz_on": 0,
                 "out_dir": td,
             }
 
-            def _zeros_mask(mesh, centers_m, Vhat, batch_size=None, ray_backend="auto"):
+            def _zeros_mask(
+                mesh,
+                centers_m,
+                Vhat,
+                batch_size=None,
+                ray_backend="auto",
+                shield_rays_mode="auto",
+            ):
                 _ = mesh
                 _ = batch_size
                 _ = Vhat
                 _ = ray_backend
+                _ = shield_rays_mode
                 return np.zeros(len(centers_m), dtype=bool), "rtree"
 
             with patch(
@@ -255,6 +264,7 @@ class TestSolverPipeline(unittest.TestCase):
 
             self.assertEqual(mocked.call_count, 1)
             self.assertEqual(mocked.call_args.kwargs.get("ray_backend"), "rtree")
+            self.assertEqual(mocked.call_args.kwargs.get("shield_rays_mode"), "precise")
             self.assertEqual(result["ray_backend_used"], "rtree")
 
     def test_run_cases_cancel_before_start(self):

@@ -104,6 +104,7 @@ def build_case_signature(row: dict) -> str:
         "Altitude_km",
         "shielding_on",
         "ray_backend",
+        "shield_rays_mode",
     ]
     numeric_keys = {
         "stl_scale_m_per_unit",
@@ -274,6 +275,7 @@ def run_case(row: dict, logfn) -> dict:
 
     shielding_on = bool(int(row.get("shielding_on", 0)))
     ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
+    shield_rays_mode = str(row.get("shield_rays_mode", "auto")).strip().lower() or "auto"
     save_vtp = bool(int(row.get("save_vtp_on", 1)))
     save_npz = bool(int(row.get("save_npz_on", 0)))
     out_dir = Path(str(row.get("out_dir", "outputs"))).expanduser()
@@ -298,6 +300,7 @@ def run_case(row: dict, logfn) -> dict:
             centers_m=centers_stl,
             Vhat=Vhat,
             ray_backend=ray_backend,
+            shield_rays_mode=shield_rays_mode,
         )
     else:
         shielded = np.zeros(len(areas), dtype=bool)

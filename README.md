@@ -90,6 +90,7 @@ Supported formats:
 | `Altitude_km` | Mode B only | km | Geometric altitude | Used with `Mach` for atmospheric lookup. |
 | `shielding_on` | No | 0/1 int | Enable shielding | `1`: ray-casting shielding on, `0`: off. Default `0`. |
 | `ray_backend` | No | string | Ray intersector backend | `auto` (default), `rtree`, or `embree`. Use `rtree` when you want to avoid Embree behavior differences. |
+| `shield_rays_mode` | No | string | Shielding ray-sampling mode | `auto` (default): Embree uses 3 rays / rtree uses 1 ray. `fast`: always 1 ray. `precise`: always 3 rays with majority vote (2/3). |
 | `save_vtp_on` | No | 0/1 int | Write VTP file | `1`: write `<out_dir>/<case_id>.vtp`. Default `1`. |
 | `save_npz_on` | No | 0/1 int | Write NPZ file | `1`: write `<out_dir>/<case_id>.npz`. Default `0`. |
 | `out_dir` | No | path string | Output directory for per-case files | Used for VTP/NPZ only. Default `outputs`. |
@@ -110,6 +111,14 @@ Practical guidance:
 - Start with `auto`.
 - If shielding results are sensitive and you want a conservative cross-check, rerun the same case with `ray_backend=rtree`.
 - `ray_backend_used` in result CSV and VTP metadata records the backend actually used.
+
+### Shielding Ray Mode (`shield_rays_mode`)
+
+- `auto` (default): backend-aware default
+  - `embree` -> 3 rays per face (majority vote)
+  - `rtree` -> 1 ray per face
+- `fast`: always 1 ray per face
+- `precise`: always 3 rays per face (majority vote)
 
 Coordinate note:
 - Internal conversion from STL to body axes is `body = (-x_stl, +y_stl, -z_stl)`.

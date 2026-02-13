@@ -18,6 +18,8 @@ except Exception:  # pragma: no cover - depends on optional runtime dependency
 _SHIELD_CACHE_LOCK = Lock()
 _SHIELD_MASK_CACHE: OrderedDict[tuple, np.ndarray] = OrderedDict()
 _INTERSECTOR_CACHE: OrderedDict[tuple, object] = OrderedDict()
+_RAYS_PER_FACE_VALUES = {1, 3}
+_SHIELD_RAYS_MODE_VALUES = {"auto", "fast", "precise"}
 
 
 def _resolve_shield_cache_max() -> int:
@@ -103,8 +105,39 @@ def _resolve_batch_size(ray_backend_resolved: str, batch_size: int | None) -> in
     return int(batch_size)
 
 
+def _resolve_rays_per_face(shield_rays_mode: str | None, ray_backend_resolved: str) -> tuple[int, str]:
+    """Resolve per-face ray sample count from mode and backend.
+
+    Modes:
+      - ``auto``: Embree uses 3 rays, rtree uses 1 ray.
+      - ``fast``: always 1 ray.
+      - ``precise``: always 3 rays.
+
+    """
+    raw = str("auto" if shield_rays_mode is None else shield_rays_mode).strip().lower()
+    mode = "auto" if raw == "" else raw
+
+    if mode not in _SHIELD_RAYS_MODE_VALUES:
+        raise ValueError("shield_rays_mode must be one of: auto, fast, precise.")
+
+    if mode == "auto":
+        rays_per_face = 3 if ray_backend_resolved == "embree" else 1
+    elif mode == "fast":
+        rays_per_face = 1
+    else:
+        rays_per_face = 3
+
+    if rays_per_face not in _RAYS_PER_FACE_VALUES:
+        raise ValueError("resolved rays_per_face must be one of: 1, 3.")
+    return rays_per_face, mode
+
+
 def _shield_cache_key(
-    mesh: trimesh.Trimesh, Vhat: np.ndarray, batch_size: int, ray_backend_resolved: str
+    mesh: trimesh.Trimesh,
+    Vhat: np.ndarray,
+    batch_size: int,
+    ray_backend_resolved: str,
+    rays_per_face: int,
 ) -> tuple:
     """Build an in-process cache key for shield mask reuse."""
     Vhat = np.asarray(Vhat, dtype=float)
@@ -114,7 +147,14 @@ def _shield_cache_key(
     d = -Vhat / norm
     # Rounded direction avoids tiny floating-point noise misses.
     d_key = tuple(np.round(d, decimals=12).tolist())
-    return (id(mesh), int(len(mesh.faces)), int(batch_size), ray_backend_resolved, d_key)
+    return (
+        id(mesh),
+        int(len(mesh.faces)),
+        int(batch_size),
+        ray_backend_resolved,
+        int(rays_per_face),
+        d_key,
+    )
 
 
 def clear_shield_cache() -> None:
@@ -130,12 +170,16 @@ def compute_shield_mask(
     Vhat: np.ndarray,
     batch_size: int | None = None,
     ray_backend: str = "auto",
+    shield_rays_mode: str = "auto",
 ) -> np.ndarray:
-    """Return per-face shielding mask using one ray per face center.
+    """Return per-face shielding mask from center or multi-sample rays.
 
-    Rays are cast from each face center along ``-Vhat`` (upstream direction).
-    A face is marked shielded if its ray first intersects another triangle
-    (intersection triangle index differs from the source face index).
+    Rays are cast along ``-Vhat`` (upstream direction), and the sampling is
+    selected by ``shield_rays_mode``:
+      - ``fast``: one ray from each face center (legacy behavior)
+      - ``precise``: three rays from equal-area sub-triangle centroids and a
+        majority vote (2/3) per face
+      - ``auto``: backend-aware default (Embree: precise, rtree: fast)
 
     Args:
         mesh: Combined triangle mesh in STL coordinates.
@@ -148,6 +192,10 @@ def compute_shield_mask(
             - ``auto``: use trimesh default backend.
             - ``rtree``: force triangle intersector.
             - ``embree``: force Embree intersector.
+        shield_rays_mode: Shielding ray sampling mode.
+            - ``auto`` (default): Embree=3 rays, rtree=1 ray
+            - ``fast``: 1 ray
+            - ``precise``: 3 rays
 
     Returns:
         Boolean array of shape ``(n_faces,)`` where ``True`` means shielded.
@@ -161,6 +209,7 @@ def compute_shield_mask(
         Vhat=Vhat,
         batch_size=batch_size,
         ray_backend=ray_backend,
+        shield_rays_mode=shield_rays_mode,
     )
     return shielded
 
@@ -171,6 +220,7 @@ def compute_shield_mask_with_backend(
     Vhat: np.ndarray,
     batch_size: int | None = None,
     ray_backend: str = "auto",
+    shield_rays_mode: str = "auto",
 ) -> tuple[np.ndarray, str]:
     """Return shielding mask and the effective ray backend used.
 
@@ -180,6 +230,10 @@ def compute_shield_mask_with_backend(
         Vhat: Freestream direction vector in STL coordinates, shape ``(3,)``.
         batch_size: Number of rays processed per query batch.
         ray_backend: Backend selector (``auto``/``rtree``/``embree``).
+        shield_rays_mode: Shielding ray sampling mode.
+            - ``auto`` (default): Embree=3 rays, rtree=1 ray
+            - ``fast``: 1 ray
+            - ``precise``: 3 rays
 
     Returns:
         Tuple ``(shielded, backend_used)`` where:
@@ -187,8 +241,9 @@ def compute_shield_mask_with_backend(
         - ``backend_used`` is one of ``rtree`` or ``embree``.
     """
     intersector, ray_backend_resolved = _resolve_intersector(mesh, ray_backend)
+    rays_per_face, _resolved_mode = _resolve_rays_per_face(shield_rays_mode, ray_backend_resolved)
     batch_size = _resolve_batch_size(ray_backend_resolved, batch_size)
-    key = _shield_cache_key(mesh, Vhat, batch_size, ray_backend_resolved)
+    key = _shield_cache_key(mesh, Vhat, batch_size, ray_backend_resolved, rays_per_face)
     if _SHIELD_CACHE_MAX > 0:
         with _SHIELD_CACHE_LOCK:
             cached = _SHIELD_MASK_CACHE.get(key)
@@ -213,8 +268,23 @@ def compute_shield_mask_with_backend(
     shielded = np.zeros(n_faces, dtype=bool)
     for start in range(0, n_faces, batch_size):
         end = min(start + batch_size, n_faces)
-        origins = centers_m[start:end] + d[None, :] * eps
-        directions = np.repeat(d[None, :], end - start, axis=0)
+        n_local = end - start
+
+        if rays_per_face == 1:
+            origins = centers_m[start:end] + d[None, :] * eps
+        else:
+            triangles = np.asarray(mesh.triangles[start:end], dtype=float)
+            v0 = triangles[:, 0, :]
+            v1 = triangles[:, 1, :]
+            v2 = triangles[:, 2, :]
+            g = (v0 + v1 + v2) / 3.0
+            s0 = (v0 + v1 + g) / 3.0
+            s1 = (v1 + v2 + g) / 3.0
+            s2 = (v2 + v0 + g) / 3.0
+            origins = np.stack([s0, s1, s2], axis=1).reshape(-1, 3)
+            origins = origins + d[None, :] * eps
+
+        directions = np.repeat(d[None, :], len(origins), axis=0)
 
         tri_idx, ray_idx = intersector.intersects_id(
             ray_origins=origins,
@@ -226,10 +296,19 @@ def compute_shield_mask_with_backend(
         if len(ray_idx) == 0:
             continue
 
-        ray_idx_global = ray_idx + start
-        hit_other_face = tri_idx != ray_idx_global
+        if rays_per_face == 1:
+            ray_idx_global = ray_idx + start
+            hit_other_face = tri_idx != ray_idx_global
+            if np.any(hit_other_face):
+                shielded[ray_idx_global[hit_other_face]] = True
+            continue
+
+        ray_face_local = ray_idx // 3
+        source_face_idx = ray_face_local + start
+        hit_other_face = tri_idx != source_face_idx
         if np.any(hit_other_face):
-            shielded[ray_idx_global[hit_other_face]] = True
+            votes = np.bincount(ray_face_local[hit_other_face], minlength=n_local)
+            shielded[start:end] |= votes >= 2
 
     if _SHIELD_CACHE_MAX > 0:
         with _SHIELD_CACHE_LOCK:
