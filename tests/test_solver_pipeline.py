@@ -108,6 +108,80 @@ class TestSolverPipeline(unittest.TestCase):
             got = res[res["scope"] == "total"]["case_id"].tolist()
             self.assertEqual(got, ["first", "second"])
 
+    def test_run_cases_parallel_smoke(self):
+        """Parallel path should execute and preserve input ordering."""
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_test_") as td:
+            df = pd.DataFrame(
+                [
+                    {
+                        "case_id": "p1",
+                        "stl_path": "samples/stl/cube.stl",
+                        "stl_scale_m_per_unit": 1.0,
+                        "alpha_deg": 0.0,
+                        "beta_deg": 0.0,
+                        "Tw_K": 300.0,
+                        "ref_x_m": 0.0,
+                        "ref_y_m": 0.0,
+                        "ref_z_m": 0.0,
+                        "Aref_m2": 1.0,
+                        "Lref_Cl_m": 1.0,
+                        "Lref_Cm_m": 1.0,
+                        "Lref_Cn_m": 1.0,
+                        "S": 5.0,
+                        "Ti_K": 300.0,
+                        "shielding_on": 0,
+                        "save_vtp_on": 0,
+                        "save_npz_on": 0,
+                        "out_dir": td,
+                    },
+                    {
+                        "case_id": "p2",
+                        "stl_path": "samples/stl/cube.stl",
+                        "stl_scale_m_per_unit": 1.0,
+                        "alpha_deg": 5.0,
+                        "beta_deg": 0.0,
+                        "Tw_K": 300.0,
+                        "ref_x_m": 0.0,
+                        "ref_y_m": 0.0,
+                        "ref_z_m": 0.0,
+                        "Aref_m2": 1.0,
+                        "Lref_Cl_m": 1.0,
+                        "Lref_Cm_m": 1.0,
+                        "Lref_Cn_m": 1.0,
+                        "S": 5.0,
+                        "Ti_K": 300.0,
+                        "shielding_on": 0,
+                        "save_vtp_on": 0,
+                        "save_npz_on": 0,
+                        "out_dir": td,
+                    },
+                    {
+                        "case_id": "p3",
+                        "stl_path": "samples/stl/cube.stl",
+                        "stl_scale_m_per_unit": 1.0,
+                        "alpha_deg": 10.0,
+                        "beta_deg": 0.0,
+                        "Tw_K": 300.0,
+                        "ref_x_m": 0.0,
+                        "ref_y_m": 0.0,
+                        "ref_z_m": 0.0,
+                        "Aref_m2": 1.0,
+                        "Lref_Cl_m": 1.0,
+                        "Lref_Cm_m": 1.0,
+                        "Lref_Cn_m": 1.0,
+                        "S": 5.0,
+                        "Ti_K": 300.0,
+                        "shielding_on": 0,
+                        "save_vtp_on": 0,
+                        "save_npz_on": 0,
+                        "out_dir": td,
+                    },
+                ]
+            )
+            res = run_cases(df, lambda _msg: None, workers=2)
+            got = res[res["scope"] == "total"]["case_id"].tolist()
+            self.assertEqual(got, ["p1", "p2", "p3"])
+
     def test_build_case_signature_numeric_normalization(self):
         row_int = {
             "case_id": "sig_case",

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 """Case execution pipeline for FMF coefficient computation."""
 
-import hashlib
 import json
 import math
 import time
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -18,7 +16,9 @@ from trimesh import ray as trimesh_ray
 
 from ..io.exporters import export_npz, export_vtp
 from ..physics.us1976 import mean_to_most_probable_speed, sample_at_altitude_km
+from .case_signature import build_case_signature
 from .mesh_utils import load_meshes
+from .parallel_scheduler import iter_case_results_parallel, resolve_parallel_chunk_cases
 from .sentman_core import (
     rot_y,
     sentman_dC_dA_vectors,
@@ -76,70 +76,6 @@ def _mode_from_row(row: dict) -> str:
             f"Case '{row.get('case_id')}' has NEITHER complete Mode A nor Mode B inputs."
         )
     return "A" if A_ok else "B"
-
-
-def build_case_signature(row: dict) -> str:
-    """Build a stable signature hash for case identity and cache validation.
-
-    The signature is stored in VTP metadata and used to verify that a VTP file
-    matches the currently selected case parameters.
-    """
-    keys = [
-        "case_id",
-        "stl_path",
-        "stl_scale_m_per_unit",
-        "alpha_deg",
-        "beta_deg",
-        "Tw_K",
-        "ref_x_m",
-        "ref_y_m",
-        "ref_z_m",
-        "Aref_m2",
-        "Lref_Cl_m",
-        "Lref_Cm_m",
-        "Lref_Cn_m",
-        "S",
-        "Ti_K",
-        "Mach",
-        "Altitude_km",
-        "shielding_on",
-        "ray_backend",
-        "shield_rays_mode",
-    ]
-    numeric_keys = {
-        "stl_scale_m_per_unit",
-        "alpha_deg",
-        "beta_deg",
-        "Tw_K",
-        "ref_x_m",
-        "ref_y_m",
-        "ref_z_m",
-        "Aref_m2",
-        "Lref_Cl_m",
-        "Lref_Cm_m",
-        "Lref_Cn_m",
-        "S",
-        "Ti_K",
-        "Mach",
-        "Altitude_km",
-        "shielding_on",
-    }
-
-    def norm_value(k, v):
-        if v is None:
-            return None
-        if isinstance(v, float) and math.isnan(v):
-            return None
-        if k in numeric_keys:
-            try:
-                return float(v)
-            except Exception:
-                return str(v)
-        return str(v)
-
-    data = {k: norm_value(k, row.get(k)) for k in keys}
-    payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _compute_S_Ti_R(row: dict) -> tuple[float, float, str]:
@@ -475,15 +411,6 @@ def run_case(row: dict, logfn) -> dict:
         "component_rows": component_rows,
     }
 
-def _null_log(_msg: str):
-    """No-op logger used in worker processes."""
-    return None
-
-
-def _run_case_worker(row: dict) -> dict:
-    """Worker wrapper for ``ProcessPoolExecutor``."""
-    return run_case(row, _null_log)
-
 
 def run_cases(
     df: pd.DataFrame,
@@ -564,52 +491,24 @@ def run_cases(
     logfn(f"[RUN] Parallel execution with {workers} worker(s)")
     case_rows = [None] * total
     done_count = 0
-    canceled = False
-    ex = ProcessPoolExecutor(max_workers=workers)
-    try:
-        futures = {}
-        for i in exec_order:
-            if cancel_cb is not None and cancel_cb():
-                canceled = True
-                break
-            r = df.iloc[i]
-            futures[ex.submit(_run_case_worker, r.to_dict())] = i
-
-        while futures and not canceled:
-            done, _pending = wait(
-                list(futures.keys()),
-                timeout=0.1,
-                return_when=FIRST_COMPLETED,
-            )
-            if not done:
-                if cancel_cb is not None and cancel_cb():
-                    canceled = True
-                continue
-
-            for fut in done:
-                i = futures.pop(fut)
-                try:
-                    expanded = _expand_case_rows(fut.result())
-                    case_rows[i] = expanded
-                    done_count += 1
-                    chunk_rows.extend(expanded)
-                    pending_cases += 1
-                    _emit_chunk(force=False)
-                    logfn(f"[OK] ({done_count}/{total}) case_id={df.loc[i, 'case_id']}")
-                    if progress_cb is not None:
-                        progress_cb(done_count, total)
-                except Exception as e:
-                    logfn(f"[ERROR] ({i+1}/{total}) case_id={df.loc[i, 'case_id']}: {e}")
-                    raise
-
-                if cancel_cb is not None and cancel_cb():
-                    canceled = True
-                    break
-    finally:
-        ex.shutdown(wait=not canceled, cancel_futures=canceled)
-
-    if canceled:
-        raise RuntimeError("Canceled by user.")
+    chunk_cases = resolve_parallel_chunk_cases()
+    for i, case_result in iter_case_results_parallel(
+        df,
+        exec_order=exec_order,
+        workers=workers,
+        run_case_fn=run_case,
+        chunk_cases=chunk_cases,
+        cancel_cb=cancel_cb,
+    ):
+        expanded = _expand_case_rows(case_result)
+        case_rows[int(i)] = expanded
+        done_count += 1
+        chunk_rows.extend(expanded)
+        pending_cases += 1
+        _emit_chunk(force=False)
+        logfn(f"[OK] ({done_count}/{total}) case_id={df.loc[int(i), 'case_id']}")
+        if progress_cb is not None:
+            progress_cb(done_count, total)
 
     rows = []
     for bucket in case_rows:
