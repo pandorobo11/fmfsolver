@@ -213,6 +213,10 @@ def iter_case_results_parallel(
     if chunk_cases is None:
         chunk_cases = resolve_parallel_chunk_cases()
 
+    # Avoid per-dispatch pandas row->dict conversions; this shaves overhead when
+    # there are many short cases or small chunk sizes.
+    records = df.to_dict(orient="records")
+
     bucket_chunks, bucket_remaining = _build_bucket_chunks(df, exec_order, int(chunk_cases))
     bucket_owner: dict[tuple, int | None] = {b: None for b in bucket_chunks.keys()}
     worker_last_bucket: list[tuple | None] = [None for _ in range(workers)]
@@ -246,7 +250,7 @@ def iter_case_results_parallel(
         if picked is None:
             return False
         bucket_id, indices = picked
-        rows = [df.iloc[i].to_dict() for i in indices]
+        rows = [records[i] for i in indices]
         task_queues[wid].put(
             {"type": "run_chunk", "bucket_id": bucket_id, "indices": indices, "rows": rows}
         )
@@ -315,4 +319,3 @@ def iter_case_results_parallel(
             if p.is_alive():
                 p.terminate()
                 p.join(timeout=2.0)
-
