@@ -59,6 +59,9 @@ class ViewerPanel(QtWidgets.QWidget):
         self.chk_shield_transparent = QtWidgets.QCheckBox("Shielded transparent")
         self.chk_shield_transparent.setChecked(True)
 
+        self.chk_overlay_text = QtWidgets.QCheckBox("Show info text")
+        self.chk_overlay_text.setChecked(True)
+
         self.cmb_cmap = QtWidgets.QComboBox()
         self.cmb_cmap.addItems(["jet", "viridis", "bwr"])
         self.cmb_cmap.setCurrentText("jet")
@@ -127,6 +130,7 @@ class ViewerPanel(QtWidgets.QWidget):
         scalar_layout.addWidget(self.cmb_scalar)
         scalar_layout.addWidget(self.chk_edges)
         scalar_layout.addWidget(self.chk_shield_transparent)
+        scalar_layout.addWidget(self.chk_overlay_text)
         scalar_layout.addWidget(QtWidgets.QLabel("Colormap:"))
         scalar_layout.addWidget(self.cmb_cmap)
         scalar_layout.addWidget(self.btn_open_vtp)
@@ -190,6 +194,7 @@ class ViewerPanel(QtWidgets.QWidget):
         self.cmb_scalar.currentTextChanged.connect(self.update_view)
         self.chk_edges.toggled.connect(self.update_view)
         self.chk_shield_transparent.toggled.connect(self.update_view)
+        self.chk_overlay_text.toggled.connect(self.update_view)
         self.cmb_cmap.currentTextChanged.connect(self.update_view)
         self.edit_vmin.editingFinished.connect(self.update_view)
         self.edit_vmax.editingFinished.connect(self.update_view)
@@ -415,6 +420,9 @@ class ViewerPanel(QtWidgets.QWidget):
             except Exception:
                 pass
             self._overlay_actor = None
+
+        if not self.chk_overlay_text.isChecked():
+            return
 
         if self._display_case_row is not None:
             txt = format_case_text(self._display_case_row)
