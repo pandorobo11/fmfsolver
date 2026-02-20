@@ -1,6 +1,6 @@
 [project]
 name = "fmfsolver"
-version = "1.2.0"
+version = "1.2.1"
 description = "Sentman free-molecular-flow STL panel solver with PySide6 + PyVistaQt GUI"
 readme = "README.md"
 requires-python = ">=3.12"
