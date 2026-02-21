@@ -79,8 +79,9 @@ Supported formats:
 | `Mach` | Mode B only | float | Mach number | Used with `Altitude_km` to derive `S` and `Ti_K` from US1976. |
 | `Altitude_km` | Mode B only | km | Geometric altitude | Used with `Mach` for atmospheric lookup. |
 | `Tw_K` | Yes | K | Wall temperature | Used in Sentman coefficient term `C`. |
-| `alpha_deg` | Yes | deg | Angle of attack | Used to build freestream direction `Vhat`. |
-| `beta_deg` | Yes | deg | Sideslip angle | Used to build freestream direction `Vhat`. |
+| `alpha_deg` | Yes | deg | 1st attitude angle | Meaning depends on `attitude_input`. |
+| `beta_or_bank_deg` | Yes | deg | 2nd attitude angle | `beta` for `beta_tan`/`beta_sin`, `bank angle (phi)` for `bank`. |
+| `attitude_input` | No | string | Attitude-angle definition | `beta_tan` (default), `beta_sin`, `bank`. |
 | `ref_x_m` | Yes | m | Moment reference X | Moment reference point in **STL axes** (input). Internally converted to body axes. |
 | `ref_y_m` | Yes | m | Moment reference Y | Moment reference point in **STL axes** (input). Internally converted to body axes. |
 | `ref_z_m` | Yes | m | Moment reference Z | Moment reference point in **STL axes** (input). Internally converted to body axes. |
@@ -115,25 +116,28 @@ Coordinate note:
 - Internal conversion from STL to body axes is `body = (-x_stl, +y_stl, -z_stl)`.
 - `ref_x_m/ref_y_m/ref_z_m` must be provided in STL axes.
 
-### Angle Definition (`alpha_deg`, `beta_deg`)
+### Angle Definition (`alpha_deg`, `beta_or_bank_deg`, `attitude_input`)
 
-Definitions in STL axes:
-- `Vhat = [Vx_stl, Vy_stl, Vz_stl]` (freestream unit vector, `|Vhat|=1`)
-- `alpha = radians(alpha_deg)`, `beta = radians(beta_deg)`
-- `Vhat = normalize([cos(alpha)cos(beta), -sin(beta)cos(alpha), sin(alpha)cos(beta)])`
-- Equivalent form: `Vhat = normalize([1, -tan(beta), tan(alpha)])`
+`Vhat = [Vx_stl, Vy_stl, Vz_stl]` is the freestream unit vector in STL axes.
 
-Equivalent geometric definitions:
-- `tan(alpha) = Vz_stl / Vx_stl`
-- `tan(beta) = -Vy_stl / Vx_stl`
+Supported attitude input modes:
 
-Sign convention in STL axes (`Vhat = [Vx_stl, Vy_stl, Vz_stl]`):
-- `alpha_deg > 0`: points freestream toward `+Z_stl` (`Vz_stl` increases)
-- `beta_deg > 0`: points freestream toward `-Y_stl` (`Vy_stl` decreases)
+- `attitude_input=beta_tan` (default)  
+  - `alpha_deg = alpha_t`, `beta_or_bank_deg = beta_t`  
+  - `Vhat = normalize([cos(alpha_t)cos(beta_t), -sin(beta_t)cos(alpha_t), sin(alpha_t)cos(beta_t)])`  
+  - `tan(alpha_t)=Vz_stl/Vx_stl`, `tan(beta_t)=-Vy_stl/Vx_stl`
 
-Practical note:
-- The implementation uses `sin/cos`, so it avoids direct `tan()` overflow.
-- Near `|alpha| ~= 90 deg` or `|beta| ~= 90 deg`, `Vx_stl` becomes very small and the angle interpretation (`Vz_stl/Vx_stl`, `Vy_stl/Vx_stl`) is ill-conditioned.
+- `attitude_input=beta_sin`  
+  - `alpha_deg = alpha_t`, `beta_or_bank_deg = beta_s`  
+  - `sin(beta_s) = -Vy_stl` (for `|Vhat|=1`) and `tan(alpha_t)=Vz_stl/Vx_stl`
+
+- `attitude_input=bank`  
+  - `alpha_deg = alpha_i` (included angle), `beta_or_bank_deg = phi` (bank angle)  
+  - `Vhat = [cos(alpha_i), -sin(alpha_i)sin(phi), sin(alpha_i)cos(phi)]`
+
+Sign convention in STL axes:
+- positive `alpha_t` (or `alpha_i`) points freestream toward `+Z_stl`
+- positive `beta_t` / `beta_s` points freestream toward `-Y_stl`
 
 ### Sample Files
 

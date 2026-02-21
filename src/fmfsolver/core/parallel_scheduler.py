@@ -15,6 +15,8 @@ from typing import Callable, Iterator
 
 import pandas as pd
 
+from .sentman_core import resolve_attitude_to_vhat
+
 
 def resolve_parallel_chunk_cases() -> int:
     """Return default per-task case chunk size for parallel scheduling."""
@@ -46,8 +48,12 @@ def _parallel_bucket_key(row: pd.Series, index: int) -> tuple:
 
     stl_paths = tuple(p.strip() for p in str(row.get("stl_path", "")).split(";") if p.strip())
     scale = round(float(row.get("stl_scale_m_per_unit", 1.0)), 12)
-    alpha = round(float(row.get("alpha_deg", 0.0)), 12)
-    beta = round(float(row.get("beta_deg", 0.0)), 12)
+    raw_alpha = float(row.get("alpha_deg", 0.0))
+    raw_beta = float(row["beta_or_bank_deg"])
+    attitude_input = row.get("attitude_input")
+    _, alpha_t, beta_t, _ = resolve_attitude_to_vhat(raw_alpha, raw_beta, attitude_input)
+    alpha = round(alpha_t, 12)
+    beta = round(beta_t, 12)
     ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
     return ("shield", stl_paths, scale, alpha, beta, ray_backend)
 

@@ -16,7 +16,7 @@ class TestIoCasesValidation(unittest.TestCase):
             "stl_path": stl_path,
             "stl_scale_m_per_unit": 1.0,
             "alpha_deg": 0.0,
-            "beta_deg": 0.0,
+            "beta_or_bank_deg": 0.0,
             "Tw_K": 300.0,
             "ref_x_m": 0.0,
             "ref_y_m": 0.0,
@@ -50,6 +50,7 @@ class TestIoCasesValidation(unittest.TestCase):
             self.assertEqual(str(loaded.loc[0, "case_id"]), "case_ok")
             self.assertEqual(int(loaded.loc[0, "shielding_on"]), 0)
             self.assertEqual(str(loaded.loc[0, "ray_backend"]), "auto")
+            self.assertEqual(str(loaded.loc[0, "attitude_input"]), "beta_tan")
             self.assertEqual(str(loaded.loc[0, "stl_path"]), str(stl_path.resolve()))
             self.assertEqual(
                 list(loaded.columns),
@@ -140,6 +141,24 @@ class TestIoCasesValidation(unittest.TestCase):
             row_bad["ray_backend"] = "invalid_backend"
             pd.DataFrame([row_bad]).to_csv(csv_path, index=False)
             with self.assertRaisesRegex(InputValidationError, "ray_backend"):
+                read_cases(str(csv_path))
+
+            row_att = self._base_row("mesh.stl")
+            row_att["attitude_input"] = "beta_sin"
+            pd.DataFrame([row_att]).to_csv(csv_path, index=False)
+            loaded = read_cases(str(csv_path))
+            self.assertEqual(str(loaded.loc[0, "attitude_input"]), "beta_sin")
+
+            row_att_alias = self._base_row("mesh.stl")
+            row_att_alias["attitude_input"] = "βsin定義"
+            pd.DataFrame([row_att_alias]).to_csv(csv_path, index=False)
+            with self.assertRaisesRegex(InputValidationError, "attitude_input"):
+                read_cases(str(csv_path))
+
+            row_att_bad = self._base_row("mesh.stl")
+            row_att_bad["attitude_input"] = "not_supported"
+            pd.DataFrame([row_att_bad]).to_csv(csv_path, index=False)
+            with self.assertRaisesRegex(InputValidationError, "attitude_input"):
                 read_cases(str(csv_path))
 
     def test_read_cases_exposes_structured_issues(self):

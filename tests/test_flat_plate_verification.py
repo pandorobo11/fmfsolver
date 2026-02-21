@@ -94,7 +94,7 @@ class TestFlatPlateVerification(unittest.TestCase):
                         "stl_path": str(stl_path),
                         "stl_scale_m_per_unit": 1.0,
                         "alpha_deg": alpha_deg,
-                        "beta_deg": 0.0,
+                        "beta_or_bank_deg": 0.0,
                         "Tw_K": Ti_K * Tr_over_Ti,
                         "ref_x_m": 0.0,
                         "ref_y_m": 0.0,

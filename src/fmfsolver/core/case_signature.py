@@ -18,7 +18,8 @@ def build_case_signature(row: dict) -> str:
         "stl_path",
         "stl_scale_m_per_unit",
         "alpha_deg",
-        "beta_deg",
+        "beta_or_bank_deg",
+        "attitude_input",
         "Tw_K",
         "ref_x_m",
         "ref_y_m",
@@ -37,7 +38,7 @@ def build_case_signature(row: dict) -> str:
     numeric_keys = {
         "stl_scale_m_per_unit",
         "alpha_deg",
-        "beta_deg",
+        "beta_or_bank_deg",
         "Tw_K",
         "ref_x_m",
         "ref_y_m",
@@ -68,4 +69,3 @@ def build_case_signature(row: dict) -> str:
     data = {k: norm_value(k, row.get(k)) for k in keys}
     payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-

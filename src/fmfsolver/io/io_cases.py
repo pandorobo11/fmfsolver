@@ -13,7 +13,7 @@ REQUIRED = [
     "stl_path",
     "stl_scale_m_per_unit",
     "alpha_deg",
-    "beta_deg",
+    "beta_or_bank_deg",
     "Tw_K",
     "ref_x_m",
     "ref_y_m",
@@ -40,7 +40,8 @@ INPUT_COLUMN_ORDER = [
     "Tw_K",
     # 5) attitude
     "alpha_deg",
-    "beta_deg",
+    "beta_or_bank_deg",
+    "attitude_input",
     # 6) reference values
     "ref_x_m",
     "ref_y_m",
@@ -61,7 +62,7 @@ INPUT_COLUMN_ORDER = [
 NUMERIC_REQUIRED = [
     "stl_scale_m_per_unit",
     "alpha_deg",
-    "beta_deg",
+    "beta_or_bank_deg",
     "Tw_K",
     "ref_x_m",
     "ref_y_m",
@@ -90,14 +91,23 @@ POSITIVE_COLUMNS = {
 
 FLAG_COLUMNS = ["shielding_on", "save_vtp_on", "save_npz_on"]
 RAY_BACKEND_VALUES = {"auto", "rtree", "embree"}
+ATTITUDE_INPUT_VALUES = {"beta_tan", "beta_sin", "bank"}
 
 DEFAULTS = {
     "shielding_on": 0,
     "save_vtp_on": 1,
     "save_npz_on": 0,
     "ray_backend": "auto",
+    "attitude_input": "beta_tan",
     "out_dir": "outputs",
 }
+
+def _normalize_attitude_input(value) -> str:
+    """Normalize attitude input selector text to canonical keyword."""
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "beta_tan"
+    return raw
 
 
 @dataclass(frozen=True)
@@ -286,6 +296,16 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     for idx in df.index[invalid_backend]:
         add_issue(int(idx), "ray_backend", "must be one of: auto, rtree, embree.")
 
+    # Normalize attitude input selector.
+    df["attitude_input"] = df["attitude_input"].map(_normalize_attitude_input)
+    invalid_attitude = ~df["attitude_input"].isin(ATTITUDE_INPUT_VALUES)
+    for idx in df.index[invalid_attitude]:
+        add_issue(
+            int(idx),
+            "attitude_input",
+            "must be one of: beta_tan, beta_sin, bank.",
+        )
+
     # out_dir must be a non-empty string value.
     df["out_dir"] = df["out_dir"].astype(str).str.strip()
     blank_out = df["out_dir"] == ""
@@ -321,6 +341,7 @@ def read_cases(path: str) -> pd.DataFrame:
         df = pd.read_excel(p, engine="openpyxl")
     else:
         raise ValueError(f"Unsupported input format: {p.suffix}")
+
     missing = [c for c in REQUIRED if c not in df.columns]
     if missing:
         issues = [

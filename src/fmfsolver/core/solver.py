@@ -20,10 +20,10 @@ from .case_signature import build_case_signature
 from .mesh_utils import load_meshes
 from .parallel_scheduler import iter_case_results_parallel, resolve_parallel_chunk_cases
 from .sentman_core import (
+    resolve_attitude_to_vhat,
     rot_y,
     sentman_dC_dA_vectors,
     stl_to_body,
-    vhat_from_alpha_beta_stl,
 )
 from .shielding import compute_shield_mask_with_backend
 
@@ -101,14 +101,14 @@ def _compute_S_Ti_R(row: dict) -> tuple[float, float, str]:
     return S, Ti, "B"
 
 
-def _compute_force_coeffs(C_force_stl: np.ndarray, alpha_deg: float) -> dict[str, float]:
+def _compute_force_coeffs(C_force_stl: np.ndarray, alpha_t_deg: float) -> dict[str, float]:
     """Convert force vector in STL axes into force coefficients."""
     C_force_body = stl_to_body(C_force_stl)
     CA = -float(C_force_body[0])
     CY = float(C_force_body[1])
     CN = -float(C_force_body[2])
 
-    Ry = rot_y(math.radians(alpha_deg))
+    Ry = rot_y(math.radians(alpha_t_deg))
     C_stab = Ry @ C_force_body
     CD = -float(C_stab[0])
     CL = -float(C_stab[2])
@@ -146,8 +146,9 @@ def _expand_case_rows(case_result: dict) -> list[dict]:
 def _shield_reuse_sort_key(row: pd.Series, index: int) -> tuple:
     """Return execution sort key to cluster reusable shield-mask cases.
 
-    Reuse condition is based on mesh identity and flow direction:
-    ``stl_path``, ``stl_scale_m_per_unit``, ``alpha_deg``, ``beta_deg``, ``ray_backend``.
+    Reuse condition is based on mesh identity and resolved flow direction:
+    ``stl_path``, ``stl_scale_m_per_unit``, resolved ``alpha_t``/``beta_t``,
+    and ``ray_backend``.
     Non-shielding cases are kept after shielding cases in input order.
     """
     try:
@@ -159,8 +160,12 @@ def _shield_reuse_sort_key(row: pd.Series, index: int) -> tuple:
 
     stl_paths = tuple(p.strip() for p in str(row.get("stl_path", "")).split(";") if p.strip())
     scale = round(float(row.get("stl_scale_m_per_unit", 1.0)), 12)
-    alpha = round(float(row.get("alpha_deg", 0.0)), 12)
-    beta = round(float(row.get("beta_deg", 0.0)), 12)
+    raw_alpha = float(row.get("alpha_deg", 0.0))
+    raw_beta = float(row["beta_or_bank_deg"])
+    attitude_input = row.get("attitude_input")
+    _, alpha_t, beta_t, _ = resolve_attitude_to_vhat(raw_alpha, raw_beta, attitude_input)
+    alpha = round(alpha_t, 12)
+    beta = round(beta_t, 12)
     ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
     return (0, stl_paths, scale, alpha, beta, ray_backend, index)
 
@@ -207,7 +212,8 @@ def run_case(row: dict, logfn) -> dict:
     ref_body = stl_to_body(ref_stl)
 
     alpha_deg = float(row["alpha_deg"])
-    beta_deg = float(row["beta_deg"])
+    beta_deg = float(row["beta_or_bank_deg"])
+    attitude_input = row.get("attitude_input")
 
     shielding_on = bool(int(row.get("shielding_on", 0)))
     ray_backend = str(row.get("ray_backend", "auto")).strip().lower() or "auto"
@@ -219,7 +225,11 @@ def run_case(row: dict, logfn) -> dict:
     S, Ti, mode = _compute_S_Ti_R(row)
     signature = build_case_signature(row)
 
-    Vhat = vhat_from_alpha_beta_stl(alpha_deg, beta_deg)
+    Vhat, alpha_t_deg, beta_t_deg, attitude_mode = resolve_attitude_to_vhat(
+        alpha_deg,
+        beta_deg,
+        attitude_input,
+    )
 
     md = load_meshes(stl_paths, scale, logfn)
     mesh = md.mesh
@@ -270,7 +280,7 @@ def run_case(row: dict, logfn) -> dict:
     C_M_body_by_component = np.zeros((num_components, 3), dtype=float)
     np.add.at(C_M_body_by_component, face_stl_index, dM_body)
 
-    total_force_coeffs = _compute_force_coeffs(C_force_stl, alpha_deg)
+    total_force_coeffs = _compute_force_coeffs(C_force_stl, alpha_t_deg)
     C_force_body = total_force_coeffs["C_force_body"]
     CA = total_force_coeffs["CA"]
     CY = total_force_coeffs["CY"]
@@ -291,7 +301,7 @@ def run_case(row: dict, logfn) -> dict:
     component_rows = []
     if num_components > 1:
         for comp_i in range(num_components):
-            coeffs = _compute_force_coeffs(C_force_stl_by_component[comp_i], alpha_deg)
+            coeffs = _compute_force_coeffs(C_force_stl_by_component[comp_i], alpha_t_deg)
             C_M_comp = C_M_body_by_component[comp_i]
             component_rows.append(
                 {
@@ -341,6 +351,9 @@ def run_case(row: dict, logfn) -> dict:
                 "solver_version": SOLVER_VERSION,
                 "stl_count": int(num_components),
                 "ray_backend_used": ray_backend_used,
+                "attitude_input_used": attitude_mode,
+                "alpha_t_deg_resolved": float(alpha_t_deg),
+                "beta_t_deg_resolved": float(beta_t_deg),
                 "stl_paths_json": json.dumps(list(stl_paths_order), ensure_ascii=True),
             },
         )
@@ -359,6 +372,9 @@ def run_case(row: dict, logfn) -> dict:
             Ti_K=Ti,
             Tw_K=Tw,
             Aref_m2=Aref,
+            attitude_input=attitude_mode,
+            alpha_t_deg_resolved=alpha_t_deg,
+            beta_t_deg_resolved=beta_t_deg,
             C_force_stl=C_force_stl,
             C_force_body=C_force_body,
             C_M_body=C_M_body,
@@ -387,6 +403,9 @@ def run_case(row: dict, logfn) -> dict:
         "run_finished_at_utc": finished_at_utc,
         "run_elapsed_s": float(elapsed_s),
         "mode": mode,
+        "attitude_input": attitude_mode,
+        "alpha_t_deg_resolved": float(alpha_t_deg),
+        "beta_t_deg_resolved": float(beta_t_deg),
         "S": float(S),
         "Ti_K": float(Ti),
         "Tw_K": float(Tw),

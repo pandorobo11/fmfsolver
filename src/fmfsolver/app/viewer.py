@@ -9,7 +9,7 @@ import pyvista as pv
 from PySide6 import QtCore, QtWidgets
 from pyvistaqt import QtInteractor
 
-from ..core.sentman_core import vhat_from_alpha_beta_stl
+from ..core.sentman_core import resolve_attitude_to_vhat
 from .ui_utils import format_case_text
 
 
@@ -288,11 +288,13 @@ class ViewerPanel(QtWidgets.QWidget):
             return None
         try:
             alpha_deg = float(self._display_case_row.get("alpha_deg"))
-            beta_deg = float(self._display_case_row.get("beta_deg"))
+            beta_deg = float(self._display_case_row.get("beta_or_bank_deg"))
+            attitude_input = self._display_case_row.get("attitude_input", "beta_tan")
         except Exception:
             return None
         try:
-            return vhat_from_alpha_beta_stl(alpha_deg, beta_deg)
+            vhat, _, _, _ = resolve_attitude_to_vhat(alpha_deg, beta_deg, attitude_input)
+            return vhat
         except Exception:
             return None
 
