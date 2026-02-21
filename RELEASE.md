@@ -26,19 +26,23 @@ This file defines the release operation for `fmfsolver`.
    python scripts/bump_version.py major
    python scripts/bump_version.py 1.2.3
    ```
-4. Commit:
+4. Refresh `uv.lock` (do not skip):
    ```bash
-   git add pyproject.toml
+   uv lock
+   ```
+5. Commit:
+   ```bash
+   git add pyproject.toml uv.lock
    git commit -m "Release vX.Y.Z"
    ```
-5. Create tag and push:
+6. Create tag and push:
    ```bash
    git tag vX.Y.Z
    git push
    git push origin vX.Y.Z
    ```
-6. GitHub Actions runs `uv build`, then automatically creates a GitHub Release for the pushed `vX.Y.Z` tag, attaching `dist/*.whl` and `dist/*.tar.gz`.
-7. Review the generated release notes on GitHub and edit if needed.
+7. GitHub Actions runs `uv build`, then automatically creates a GitHub Release for the pushed `vX.Y.Z` tag, attaching `dist/*.whl` and `dist/*.tar.gz`.
+8. Review the generated release notes on GitHub and edit if needed.
 
 ## Notes
 
