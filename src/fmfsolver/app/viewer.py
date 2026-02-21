@@ -21,9 +21,9 @@ class ViewerPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        right_layout = QtWidgets.QVBoxLayout(self)
-        right_layout.setSpacing(6)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout = QtWidgets.QVBoxLayout(self)
+        self._root_layout.setSpacing(6)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
 
         self.plotter = QtInteractor(self)
         try:
@@ -33,12 +33,22 @@ class ViewerPanel(QtWidgets.QWidget):
                 self.plotter.camera.parallel_projection = True
             except Exception:
                 pass
-        right_layout.addWidget(self.plotter.interactor, 6)
+        self._root_layout.addWidget(self.plotter.interactor, 6)
 
-        ctrl = QtWidgets.QVBoxLayout()
-        ctrl.setSpacing(3)
-        ctrl.setContentsMargins(0, 0, 0, 0)
+        self._init_controls()
+        self._style_controls()
+        self._build_controls_layout()
+        self._connect_controls()
 
+        self.df_cases = None
+        self._poly: pv.PolyData | None = None
+        self._display_case_row: dict | None = None
+        self._overlay_actor = None
+        self._default_view_vec = (-1, -1, 1)
+        self._camera_initialized = False
+
+    def _init_controls(self):
+        """Create viewer control widgets."""
         self.cmb_scalar = QtWidgets.QComboBox()
         self.cmb_scalar.addItems(
             [
@@ -55,10 +65,8 @@ class ViewerPanel(QtWidgets.QWidget):
 
         self.chk_edges = QtWidgets.QCheckBox("Show edges")
         self.chk_edges.setChecked(True)
-
         self.chk_shield_transparent = QtWidgets.QCheckBox("Shielded transparent")
         self.chk_shield_transparent.setChecked(True)
-
         self.chk_overlay_text = QtWidgets.QCheckBox("Show info text")
         self.chk_overlay_text.setChecked(True)
 
@@ -71,8 +79,8 @@ class ViewerPanel(QtWidgets.QWidget):
         self.edit_vmin.setPlaceholderText("vmin (blank=auto)")
         self.edit_vmax.setPlaceholderText("vmax (blank=auto)")
         self.btn_auto_range = QtWidgets.QPushButton("Auto range")
-
         self.btn_open_vtp = QtWidgets.QPushButton("Open VTP...")
+
         self.btn_view_xp = QtWidgets.QPushButton("+X")
         self.btn_view_xn = QtWidgets.QPushButton("-X")
         self.btn_view_yp = QtWidgets.QPushButton("+Y")
@@ -83,6 +91,7 @@ class ViewerPanel(QtWidgets.QWidget):
         self.btn_view_iso_2 = QtWidgets.QPushButton("+X -Y -Z")
         self.btn_view_wind = QtWidgets.QPushButton("Wind +")
         self.btn_view_wind_rev = QtWidgets.QPushButton("Wind -")
+
         self.btn_save_image = QtWidgets.QPushButton("Save Image...")
         self.btn_save_selected_images = QtWidgets.QPushButton("Save Selected...")
 
@@ -92,6 +101,9 @@ class ViewerPanel(QtWidgets.QWidget):
         self.lbl_colorbar = QtWidgets.QLabel("COLORBAR")
         self.lbl_camera = QtWidgets.QLabel("CAMERA")
         self.lbl_export = QtWidgets.QLabel("EXPORT")
+
+    def _style_controls(self):
+        """Apply consistent sizing and style for control widgets."""
         row_labels = (
             self.lbl_scalar,
             self.lbl_options,
@@ -106,13 +118,7 @@ class ViewerPanel(QtWidgets.QWidget):
             lbl.setStyleSheet("QLabel { color: #b8bcc2; font-weight: 600; }")
         self.lbl_colormap.setStyleSheet("QLabel { color: #b8bcc2; font-weight: 600; }")
 
-        max_label_width = max(
-            self.lbl_scalar.sizeHint().width(),
-            self.lbl_options.sizeHint().width(),
-            self.lbl_colorbar.sizeHint().width(),
-            self.lbl_camera.sizeHint().width(),
-            self.lbl_export.sizeHint().width(),
-        )
+        max_label_width = max(lbl.sizeHint().width() for lbl in row_labels)
         for lbl in row_labels:
             lbl.setFixedWidth(max_label_width)
 
@@ -131,30 +137,34 @@ class ViewerPanel(QtWidgets.QWidget):
             self.btn_view_wind,
             self.btn_view_wind_rev,
         ]
-        save_buttons = [
-            self.btn_save_image,
-            self.btn_save_selected_images,
-        ]
+        save_buttons = [self.btn_save_image, self.btn_save_selected_images]
         axis_width = max(b.sizeHint().width() for b in axis_buttons)
         preset_width = max(b.sizeHint().width() for b in preset_buttons)
         save_width = max(b.sizeHint().width() for b in save_buttons)
-        for b in axis_buttons:
-            b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
-            b.setFixedWidth(axis_width)
-            b.setFixedHeight(ref_height)
-        for b in preset_buttons:
-            b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
-            b.setFixedWidth(preset_width)
-            b.setFixedHeight(ref_height)
-        for b in save_buttons:
-            b.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
-            b.setFixedWidth(save_width)
-            b.setFixedHeight(ref_height)
+
+        for buttons, width in (
+            (axis_buttons, axis_width),
+            (preset_buttons, preset_width),
+            (save_buttons, save_width),
+        ):
+            for b in buttons:
+                b.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                )
+                b.setFixedWidth(width)
+                b.setFixedHeight(ref_height)
 
         self.cmb_scalar.setMinimumWidth(145)
         self.cmb_cmap.setMinimumWidth(105)
         self.edit_vmin.setMinimumWidth(120)
         self.edit_vmax.setMinimumWidth(120)
+
+    def _build_controls_layout(self):
+        """Build and attach control rows under the VTP interactor."""
+        ctrl = QtWidgets.QVBoxLayout()
+        ctrl.setSpacing(3)
+        ctrl.setContentsMargins(0, 0, 0, 0)
 
         display_row = QtWidgets.QHBoxLayout()
         display_row.setSpacing(8)
@@ -207,28 +217,23 @@ class ViewerPanel(QtWidgets.QWidget):
         camera_row.addWidget(self.btn_view_wind_rev)
         camera_row.addStretch(1)
 
-        camera_row3 = QtWidgets.QHBoxLayout()
-        camera_row3.setSpacing(6)
-        camera_row3.setContentsMargins(0, 0, 0, 0)
-        camera_row3.addWidget(self.lbl_export)
-        camera_row3.addWidget(self.btn_save_image)
-        camera_row3.addWidget(self.btn_save_selected_images)
-        camera_row3.addStretch(1)
+        export_row = QtWidgets.QHBoxLayout()
+        export_row.setSpacing(6)
+        export_row.setContentsMargins(0, 0, 0, 0)
+        export_row.addWidget(self.lbl_export)
+        export_row.addWidget(self.btn_save_image)
+        export_row.addWidget(self.btn_save_selected_images)
+        export_row.addStretch(1)
 
         ctrl.addLayout(display_row)
         ctrl.addLayout(display_options_row)
         ctrl.addLayout(colorbar_row)
         ctrl.addLayout(camera_row)
-        ctrl.addLayout(camera_row3)
-        right_layout.addLayout(ctrl)
+        ctrl.addLayout(export_row)
+        self._root_layout.addLayout(ctrl)
 
-        self.df_cases = None
-        self._poly: pv.PolyData | None = None
-        self._display_case_row: dict | None = None
-        self._overlay_actor = None
-        self._default_view_vec = (-1, -1, 1)
-        self._camera_initialized = False
-
+    def _connect_controls(self):
+        """Connect widget signals to viewer actions."""
         self.btn_open_vtp.clicked.connect(self.open_vtp)
         self.cmb_scalar.currentTextChanged.connect(self.update_view)
         self.chk_edges.toggled.connect(self.update_view)
@@ -249,9 +254,7 @@ class ViewerPanel(QtWidgets.QWidget):
         self.btn_view_wind.clicked.connect(self.set_view_wind)
         self.btn_view_wind_rev.clicked.connect(self.set_view_wind_reverse)
         self.btn_save_image.clicked.connect(self.save_view_image)
-        self.btn_save_selected_images.clicked.connect(
-            self.save_selected_images_requested.emit
-        )
+        self.btn_save_selected_images.clicked.connect(self.save_selected_images_requested.emit)
 
     def logln(self, s: str):
         """Emit a message to the shared GUI log."""

@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from trimesh import ray as trimesh_ray
 
+from ..common import is_filled
 from ..io.exporters import export_npz, export_vtp
 from ..physics.us1976 import mean_to_most_probable_speed, sample_at_altitude_km
 from .case_signature import build_case_signature
@@ -52,23 +53,14 @@ def _maybe_log_ray_accel_hint(logfn) -> None:
     _RAY_ACCEL_HINT_SHOWN = True
 
 
-def _is_filled(x) -> bool:
-    """Return True when a cell value should be treated as specified."""
-    if x is None:
-        return False
-    if isinstance(x, float) and math.isnan(x):
-        return False
-    return str(x).strip() != ""
-
-
 def _mode_from_row(row: dict) -> str:
     """Determine input mode for a case row.
 
     Mode A requires ``S`` and ``Ti_K``.
     Mode B requires ``Mach`` and ``Altitude_km``.
     """
-    A_ok = _is_filled(row.get("S")) and _is_filled(row.get("Ti_K"))
-    B_ok = _is_filled(row.get("Mach")) and _is_filled(row.get("Altitude_km"))
+    A_ok = is_filled(row.get("S")) and is_filled(row.get("Ti_K"))
+    B_ok = is_filled(row.get("Mach")) and is_filled(row.get("Altitude_km"))
     if A_ok and B_ok:
         raise ValueError(f"Case '{row.get('case_id')}' has BOTH Mode A and Mode B inputs.")
     if (not A_ok) and (not B_ok):
@@ -141,6 +133,239 @@ def _expand_case_rows(case_result: dict) -> list[dict]:
         row.update(comp)
         rows.append(row)
     return rows
+
+
+def _compute_case_integrals(
+    *,
+    Vhat: np.ndarray,
+    normals_out_stl: np.ndarray,
+    areas: np.ndarray,
+    centers_stl: np.ndarray,
+    face_stl_index: np.ndarray,
+    S: float,
+    Ti: float,
+    Tw: float,
+    Aref: float,
+    ref_body: np.ndarray,
+    alpha_t_deg: float,
+    Lref_Cl: float,
+    Lref_Cm: float,
+    Lref_Cn: float,
+    shielded: np.ndarray,
+    num_components: int,
+) -> dict:
+    """Compute per-face and integrated coefficients for one case."""
+    dC_dA_arr = sentman_dC_dA_vectors(
+        Vhat=Vhat,
+        n_out=normals_out_stl,
+        S=S,
+        Ti=Ti,
+        Tw=Tw,
+        Aref=Aref,
+        shielded=shielded,
+    )
+
+    C_face_stl = dC_dA_arr * areas[:, None]
+    C_force_stl = C_face_stl.sum(axis=0)
+
+    C_force_stl_by_component = np.zeros((num_components, 3), dtype=float)
+    np.add.at(C_force_stl_by_component, face_stl_index, C_face_stl)
+
+    dot_nv = np.einsum("ij,j->i", normals_out_stl, Vhat)
+    theta_deg = np.degrees(np.arccos(np.clip(dot_nv, -1.0, 1.0)))
+    Cp_n = -(Aref / areas) * np.einsum("ij,ij->i", C_face_stl, normals_out_stl)
+
+    centers_body = _stl_to_body_array(centers_stl)
+    C_face_body = _stl_to_body_array(C_face_stl)
+    dM_body = np.cross(centers_body - ref_body[None, :], C_face_body)
+    C_M_body = dM_body.sum(axis=0)
+
+    C_M_body_by_component = np.zeros((num_components, 3), dtype=float)
+    np.add.at(C_M_body_by_component, face_stl_index, dM_body)
+
+    total_force_coeffs = _compute_force_coeffs(C_force_stl, alpha_t_deg)
+    C_force_body = total_force_coeffs["C_force_body"]
+    CA = total_force_coeffs["CA"]
+    CY = total_force_coeffs["CY"]
+    CN = total_force_coeffs["CN"]
+    CD = total_force_coeffs["CD"]
+    CL = total_force_coeffs["CL"]
+
+    Cl = float(C_M_body[0]) / Lref_Cl
+    Cm = float(C_M_body[1]) / Lref_Cm
+    Cn = float(C_M_body[2]) / Lref_Cn
+
+    return {
+        "C_face_stl": C_face_stl,
+        "C_force_stl": C_force_stl,
+        "C_force_stl_by_component": C_force_stl_by_component,
+        "C_force_body": C_force_body,
+        "theta_deg": theta_deg,
+        "Cp_n": Cp_n,
+        "C_M_body": C_M_body,
+        "C_M_body_by_component": C_M_body_by_component,
+        "CA": CA,
+        "CY": CY,
+        "CN": CN,
+        "Cl": Cl,
+        "Cm": Cm,
+        "Cn": Cn,
+        "CD": CD,
+        "CL": CL,
+    }
+
+
+def _build_component_rows(
+    *,
+    num_components: int,
+    stl_paths_order: list[str],
+    C_force_stl_by_component: np.ndarray,
+    C_M_body_by_component: np.ndarray,
+    alpha_t_deg: float,
+    Lref_Cl: float,
+    Lref_Cm: float,
+    Lref_Cn: float,
+    component_faces: np.ndarray,
+    component_shielded_faces: np.ndarray,
+) -> list[dict]:
+    """Build per-component result rows for multi-STL cases."""
+    rows: list[dict] = []
+    if num_components <= 1:
+        return rows
+
+    for comp_i in range(num_components):
+        coeffs = _compute_force_coeffs(C_force_stl_by_component[comp_i], alpha_t_deg)
+        C_M_comp = C_M_body_by_component[comp_i]
+        rows.append(
+            {
+                "scope": "component",
+                "component_id": int(comp_i),
+                "component_stl_path": stl_paths_order[comp_i],
+                "CA": coeffs["CA"],
+                "CY": coeffs["CY"],
+                "CN": coeffs["CN"],
+                "Cl": float(C_M_comp[0]) / Lref_Cl,
+                "Cm": float(C_M_comp[1]) / Lref_Cm,
+                "Cn": float(C_M_comp[2]) / Lref_Cn,
+                "CD": coeffs["CD"],
+                "CL": coeffs["CL"],
+                "faces": int(component_faces[comp_i]),
+                "shielded_faces": int(component_shielded_faces[comp_i]),
+                # Keep paths only in total row for easier downstream handling.
+                "vtp_path": "",
+                "npz_path": "",
+            }
+        )
+    return rows
+
+
+def _export_case_artifacts(
+    *,
+    save_vtp: bool,
+    save_npz: bool,
+    vtp_path: Path,
+    npz_path: Path,
+    mesh,
+    areas: np.ndarray,
+    shielded: np.ndarray,
+    Cp_n: np.ndarray,
+    theta_deg: np.ndarray,
+    C_face_stl: np.ndarray,
+    centers_stl: np.ndarray,
+    face_stl_index: np.ndarray,
+    case_id: str,
+    signature: str,
+    num_components: int,
+    ray_backend_used: str,
+    attitude_mode: str,
+    alpha_t_deg: float,
+    beta_t_deg: float,
+    stl_paths_order: list[str],
+    normals_out_stl: np.ndarray,
+    Vhat: np.ndarray,
+    S: float,
+    Ti: float,
+    Tw: float,
+    Aref: float,
+    C_force_stl: np.ndarray,
+    C_force_body: np.ndarray,
+    C_M_body: np.ndarray,
+    CA: float,
+    CY: float,
+    CN: float,
+    Cl: float,
+    Cm: float,
+    Cn: float,
+    CD: float,
+    CL: float,
+) -> tuple[str, str]:
+    """Write optional VTP/NPZ artifacts and return output paths."""
+    if save_vtp:
+        cell_data = {
+            "area_m2": areas,
+            "shielded": shielded.astype(np.uint8),
+            "Cp_n": Cp_n,
+            "theta_deg": theta_deg,
+            "C_face_stl": C_face_stl,
+            # Face center scalars (STL axes, meters).
+            "center_x_stl_m": centers_stl[:, 0],
+            "center_y_stl_m": centers_stl[:, 1],
+            "center_z_stl_m": centers_stl[:, 2],
+            "stl_index": face_stl_index.astype(np.int32),
+        }
+        export_vtp(
+            str(vtp_path),
+            mesh.vertices,
+            mesh.faces,
+            cell_data,
+            field_data={
+                "case_id": case_id,
+                "case_signature": signature,
+                "solver_version": SOLVER_VERSION,
+                "stl_count": int(num_components),
+                "ray_backend_used": ray_backend_used,
+                "attitude_input_used": attitude_mode,
+                "alpha_t_deg_resolved": float(alpha_t_deg),
+                "beta_t_deg_resolved": float(beta_t_deg),
+                "stl_paths_json": json.dumps(list(stl_paths_order), ensure_ascii=True),
+            },
+        )
+
+    if save_npz:
+        export_npz(
+            str(npz_path),
+            vertices=mesh.vertices,
+            faces=mesh.faces,
+            centers_stl_m=centers_stl,
+            normals_out_stl=normals_out_stl,
+            areas_m2=areas,
+            shielded=shielded,
+            Vhat_stl=Vhat,
+            S=S,
+            Ti_K=Ti,
+            Tw_K=Tw,
+            Aref_m2=Aref,
+            attitude_input=attitude_mode,
+            alpha_t_deg_resolved=alpha_t_deg,
+            beta_t_deg_resolved=beta_t_deg,
+            C_force_stl=C_force_stl,
+            C_force_body=C_force_body,
+            C_M_body=C_M_body,
+            CA=CA,
+            CY=CY,
+            CN=CN,
+            Cl=Cl,
+            Cm=Cm,
+            Cn=Cn,
+            CD=CD,
+            CL=CL,
+            Cp_n=Cp_n,
+            face_stl_index=face_stl_index,
+            stl_paths=np.array(stl_paths_order, dtype=object),
+            ray_backend_used=ray_backend_used,
+        )
+
+    return (str(vtp_path) if save_vtp else "", str(npz_path) if save_npz else "")
 
 
 def _shield_reuse_sort_key(row: pd.Series, index: int) -> tuple:
@@ -252,45 +477,41 @@ def run_case(row: dict, logfn) -> dict:
 
     n_faces = len(areas)
     num_components = len(stl_paths_order)
-    dC_dA_arr = sentman_dC_dA_vectors(
+    calc = _compute_case_integrals(
         Vhat=Vhat,
-        n_out=normals_out_stl,
+        normals_out_stl=normals_out_stl,
+        areas=areas,
+        centers_stl=centers_stl,
+        face_stl_index=face_stl_index,
         S=S,
         Ti=Ti,
         Tw=Tw,
         Aref=Aref,
+        ref_body=ref_body,
+        alpha_t_deg=alpha_t_deg,
+        Lref_Cl=Lref_Cl,
+        Lref_Cm=Lref_Cm,
+        Lref_Cn=Lref_Cn,
         shielded=shielded,
+        num_components=num_components,
     )
 
-    C_face_stl = dC_dA_arr * areas[:, None]
-    C_force_stl = C_face_stl.sum(axis=0)
-
-    C_force_stl_by_component = np.zeros((num_components, 3), dtype=float)
-    np.add.at(C_force_stl_by_component, face_stl_index, C_face_stl)
-
-    dot_nv = np.einsum("ij,j->i", normals_out_stl, Vhat)
-    theta_deg = np.degrees(np.arccos(np.clip(dot_nv, -1.0, 1.0)))
-    Cp_n = -(Aref / areas) * np.einsum("ij,ij->i", C_face_stl, normals_out_stl)
-
-    centers_body = _stl_to_body_array(centers_stl)
-    C_face_body = _stl_to_body_array(C_face_stl)
-    dM_body = np.cross(centers_body - ref_body[None, :], C_face_body)
-    C_M_body = dM_body.sum(axis=0)
-
-    C_M_body_by_component = np.zeros((num_components, 3), dtype=float)
-    np.add.at(C_M_body_by_component, face_stl_index, dM_body)
-
-    total_force_coeffs = _compute_force_coeffs(C_force_stl, alpha_t_deg)
-    C_force_body = total_force_coeffs["C_force_body"]
-    CA = total_force_coeffs["CA"]
-    CY = total_force_coeffs["CY"]
-    CN = total_force_coeffs["CN"]
-    CD = total_force_coeffs["CD"]
-    CL = total_force_coeffs["CL"]
-
-    Cl = float(C_M_body[0]) / Lref_Cl
-    Cm = float(C_M_body[1]) / Lref_Cm
-    Cn = float(C_M_body[2]) / Lref_Cn
+    C_face_stl = calc["C_face_stl"]
+    C_force_stl = calc["C_force_stl"]
+    C_force_stl_by_component = calc["C_force_stl_by_component"]
+    C_force_body = calc["C_force_body"]
+    theta_deg = calc["theta_deg"]
+    Cp_n = calc["Cp_n"]
+    C_M_body = calc["C_M_body"]
+    C_M_body_by_component = calc["C_M_body_by_component"]
+    CA = calc["CA"]
+    CY = calc["CY"]
+    CN = calc["CN"]
+    Cl = calc["Cl"]
+    Cm = calc["Cm"]
+    Cn = calc["Cn"]
+    CD = calc["CD"]
+    CL = calc["CL"]
 
     component_faces = np.bincount(face_stl_index, minlength=num_components).astype(int)
     component_shielded_faces = np.bincount(
@@ -298,99 +519,61 @@ def run_case(row: dict, logfn) -> dict:
         weights=shielded.astype(np.int64),
         minlength=num_components,
     ).astype(int)
-    component_rows = []
-    if num_components > 1:
-        for comp_i in range(num_components):
-            coeffs = _compute_force_coeffs(C_force_stl_by_component[comp_i], alpha_t_deg)
-            C_M_comp = C_M_body_by_component[comp_i]
-            component_rows.append(
-                {
-                    "scope": "component",
-                    "component_id": int(comp_i),
-                    "component_stl_path": stl_paths_order[comp_i],
-                    "CA": coeffs["CA"],
-                    "CY": coeffs["CY"],
-                    "CN": coeffs["CN"],
-                    "Cl": float(C_M_comp[0]) / Lref_Cl,
-                    "Cm": float(C_M_comp[1]) / Lref_Cm,
-                    "Cn": float(C_M_comp[2]) / Lref_Cn,
-                    "CD": coeffs["CD"],
-                    "CL": coeffs["CL"],
-                    "faces": int(component_faces[comp_i]),
-                    "shielded_faces": int(component_shielded_faces[comp_i]),
-                    # Keep paths only in total row for easier downstream handling.
-                    "vtp_path": "",
-                    "npz_path": "",
-                }
-            )
+    component_rows = _build_component_rows(
+        num_components=num_components,
+        stl_paths_order=stl_paths_order,
+        C_force_stl_by_component=C_force_stl_by_component,
+        C_M_body_by_component=C_M_body_by_component,
+        alpha_t_deg=alpha_t_deg,
+        Lref_Cl=Lref_Cl,
+        Lref_Cm=Lref_Cm,
+        Lref_Cn=Lref_Cn,
+        component_faces=component_faces,
+        component_shielded_faces=component_shielded_faces,
+    )
 
     vtp_path = out_dir / f"{case_id}.vtp"
     npz_path = out_dir / f"{case_id}.npz"
 
-    if save_vtp:
-        cell_data = {
-            "area_m2": areas,
-            "shielded": shielded.astype(np.uint8),
-            "Cp_n": Cp_n,
-            "theta_deg": theta_deg,
-            "C_face_stl": C_face_stl,
-            # NEW: face center scalars (STL axes, meters)
-            "center_x_stl_m": centers_stl[:, 0],
-            "center_y_stl_m": centers_stl[:, 1],
-            "center_z_stl_m": centers_stl[:, 2],
-            "stl_index": face_stl_index.astype(np.int32),
-        }
-        export_vtp(
-            str(vtp_path),
-            mesh.vertices,
-            mesh.faces,
-            cell_data,
-            field_data={
-                "case_id": case_id,
-                "case_signature": signature,
-                "solver_version": SOLVER_VERSION,
-                "stl_count": int(num_components),
-                "ray_backend_used": ray_backend_used,
-                "attitude_input_used": attitude_mode,
-                "alpha_t_deg_resolved": float(alpha_t_deg),
-                "beta_t_deg_resolved": float(beta_t_deg),
-                "stl_paths_json": json.dumps(list(stl_paths_order), ensure_ascii=True),
-            },
-        )
-
-    if save_npz:
-        export_npz(
-            str(npz_path),
-            vertices=mesh.vertices,
-            faces=mesh.faces,
-            centers_stl_m=centers_stl,
-            normals_out_stl=normals_out_stl,
-            areas_m2=areas,
-            shielded=shielded,
-            Vhat_stl=Vhat,
-            S=S,
-            Ti_K=Ti,
-            Tw_K=Tw,
-            Aref_m2=Aref,
-            attitude_input=attitude_mode,
-            alpha_t_deg_resolved=alpha_t_deg,
-            beta_t_deg_resolved=beta_t_deg,
-            C_force_stl=C_force_stl,
-            C_force_body=C_force_body,
-            C_M_body=C_M_body,
-            CA=CA,
-            CY=CY,
-            CN=CN,
-            Cl=Cl,
-            Cm=Cm,
-            Cn=Cn,
-            CD=CD,
-            CL=CL,
-            Cp_n=Cp_n,
-            face_stl_index=face_stl_index,
-            stl_paths=np.array(stl_paths_order, dtype=object),
-            ray_backend_used=ray_backend_used,
-        )
+    vtp_path_str, npz_path_str = _export_case_artifacts(
+        save_vtp=save_vtp,
+        save_npz=save_npz,
+        vtp_path=vtp_path,
+        npz_path=npz_path,
+        mesh=mesh,
+        areas=areas,
+        shielded=shielded,
+        Cp_n=Cp_n,
+        theta_deg=theta_deg,
+        C_face_stl=C_face_stl,
+        centers_stl=centers_stl,
+        face_stl_index=face_stl_index,
+        case_id=case_id,
+        signature=signature,
+        num_components=num_components,
+        ray_backend_used=ray_backend_used,
+        attitude_mode=attitude_mode,
+        alpha_t_deg=alpha_t_deg,
+        beta_t_deg=beta_t_deg,
+        stl_paths_order=stl_paths_order,
+        normals_out_stl=normals_out_stl,
+        Vhat=Vhat,
+        S=S,
+        Ti=Ti,
+        Tw=Tw,
+        Aref=Aref,
+        C_force_stl=C_force_stl,
+        C_force_body=C_force_body,
+        C_M_body=C_M_body,
+        CA=CA,
+        CY=CY,
+        CN=CN,
+        Cl=Cl,
+        Cm=Cm,
+        Cn=Cn,
+        CD=CD,
+        CL=CL,
+    )
 
     finished_at_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     elapsed_s = time.perf_counter() - t0
@@ -422,8 +605,8 @@ def run_case(row: dict, logfn) -> dict:
         "CL": CL,
         "faces": int(len(mesh.faces)),
         "shielded_faces": int(shielded.sum()),
-        "vtp_path": str(vtp_path) if save_vtp else "",
-        "npz_path": str(npz_path) if save_npz else "",
+        "vtp_path": vtp_path_str,
+        "npz_path": npz_path_str,
         "component_rows": component_rows,
     }
 
