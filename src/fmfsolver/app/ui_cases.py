@@ -288,7 +288,9 @@ class CasesPanel(QtWidgets.QWidget):
         self.case_table.clear()
         self.case_table.setColumnCount(len(cols))
         self.case_table.setRowCount(len(self.df_cases))
-        self.case_table.setHorizontalHeaderLabels(cols)
+        headers = ["stl_name" if c == "stl_path" else c for c in cols]
+        self.case_table.setHorizontalHeaderLabels(headers)
+        stl_col_idx = cols.index("stl_path") if "stl_path" in cols else -1
 
         for row_idx, (_, row) in enumerate(self.df_cases.iterrows()):
             row_dict = row.to_dict()
@@ -296,12 +298,19 @@ class CasesPanel(QtWidgets.QWidget):
             for col_idx, col in enumerate(cols):
                 val = row_dict.get(col, "")
                 text = "" if pd.isna(val) else str(val)
-                item = QtWidgets.QTableWidgetItem(text)
+                display_text = text
+                if col == "stl_path" and text:
+                    display_text = Path(text).name
+                item = QtWidgets.QTableWidgetItem(display_text)
+                if col == "stl_path" and text:
+                    item.setToolTip(text)
                 if col_idx == 0:
                     item.setData(QtCore.Qt.ItemDataRole.UserRole, int(row_idx))
                 self.case_table.setItem(row_idx, col_idx, item)
 
         self.case_table.resizeColumnsToContents()
+        if stl_col_idx >= 0:
+            self.case_table.setColumnWidth(stl_col_idx, 180)
 
     def on_case_selection_changed(self):
         """Auto-load a matching VTP for the first selected case, if available."""
