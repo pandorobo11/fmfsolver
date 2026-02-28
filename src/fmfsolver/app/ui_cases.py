@@ -300,7 +300,7 @@ class CasesPanel(QtWidgets.QWidget):
                 text = "" if pd.isna(val) else str(val)
                 display_text = text
                 if col == "stl_path" and text:
-                    display_text = Path(text).name
+                    display_text = self._format_stl_name(text)
                 item = QtWidgets.QTableWidgetItem(display_text)
                 if col == "stl_path" and text:
                     item.setToolTip(text)
@@ -310,7 +310,16 @@ class CasesPanel(QtWidgets.QWidget):
 
         self.case_table.resizeColumnsToContents()
         if stl_col_idx >= 0:
-            self.case_table.setColumnWidth(stl_col_idx, 180)
+            self.case_table.setColumnWidth(stl_col_idx, 220)
+
+    @staticmethod
+    def _format_stl_name(stl_path_value: str) -> str:
+        """Format one or more STL paths as a compact filename list."""
+        parts = [p.strip() for p in stl_path_value.split(";") if p.strip()]
+        if not parts:
+            return ""
+        names = [Path(p).name for p in parts]
+        return ", ".join(names)
 
     def on_case_selection_changed(self):
         """Auto-load a matching VTP for the first selected case, if available."""
