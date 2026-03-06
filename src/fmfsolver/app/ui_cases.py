@@ -147,19 +147,27 @@ class CasesPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self.input_label = QtWidgets.QLabel("Input: (not selected)")
+        self.input_value = QtWidgets.QLineEdit()
+        self.input_value.setReadOnly(True)
+        self.input_value.setPlaceholderText("CSV / Excel input file")
         self.btn_pick_input = QtWidgets.QPushButton("Select Input File")
         self.btn_run = QtWidgets.QPushButton("Run Selected Cases")
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         self.btn_cancel.setEnabled(False)
         self.btn_run.setEnabled(False)
+        self.btn_pick_input.setMinimumWidth(176)
 
         self.lbl_workers = QtWidgets.QLabel("Workers:")
         self.spin_workers = QtWidgets.QSpinBox()
         max_workers = os.cpu_count() or 1
         self.spin_workers.setRange(1, max_workers)
         self.spin_workers.setValue(1)
+
+        self.lbl_case_summary = QtWidgets.QLabel("No cases loaded")
+        self.lbl_selection_summary = QtWidgets.QLabel("Selected: 0")
 
         self.case_table = QtWidgets.QTableWidget()
         self.case_table.setSelectionMode(
@@ -170,32 +178,82 @@ class CasesPanel(QtWidgets.QWidget):
         )
         self.case_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.case_table.setAlternatingRowColors(True)
-        self.case_table.horizontalHeader().setStretchLastSection(True)
+        self.case_table.setWordWrap(False)
+        self.case_table.setHorizontalScrollMode(
+            QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel
+        )
+        self.case_table.verticalHeader().setVisible(False)
+        header = self.case_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setHighlightSections(False)
 
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(8000)
+        self.log.setPlaceholderText("Execution log")
+        self.log.setMinimumHeight(180)
 
-        layout.addWidget(self.input_label)
-        layout.addWidget(self.btn_pick_input)
-        layout.addWidget(QtWidgets.QLabel("Cases:"))
-        layout.addWidget(self.case_table, 3)
+        section_style = "QLabel { font-weight: 600; }"
+
+        input_group = QtWidgets.QGroupBox()
+        input_layout = QtWidgets.QVBoxLayout(input_group)
+        input_layout.setSpacing(10)
+        input_layout.setContentsMargins(12, 12, 12, 12)
+        input_header = QtWidgets.QLabel("Input")
+        input_header.setStyleSheet(section_style)
+        input_layout.addWidget(input_header)
+        input_layout.addWidget(self.input_value)
+        input_button_row = QtWidgets.QHBoxLayout()
+        input_button_row.setContentsMargins(0, 0, 0, 0)
+        input_button_row.addStretch(1)
+        input_button_row.addWidget(self.btn_pick_input)
+        input_layout.addLayout(input_button_row)
+
+        cases_group = QtWidgets.QGroupBox()
+        cases_layout = QtWidgets.QVBoxLayout(cases_group)
+        cases_layout.setSpacing(10)
+        cases_layout.setContentsMargins(12, 12, 12, 12)
+        cases_header = QtWidgets.QLabel("Cases")
+        cases_header.setStyleSheet(section_style)
+        cases_layout.addWidget(cases_header)
+        summary_row = QtWidgets.QHBoxLayout()
+        summary_row.setContentsMargins(0, 0, 0, 0)
+        summary_row.addWidget(self.lbl_case_summary)
+        summary_row.addStretch(1)
+        summary_row.addWidget(self.lbl_selection_summary)
+        cases_layout.addLayout(summary_row)
+        cases_layout.addWidget(self.case_table, 1)
+
+        run_group = QtWidgets.QGroupBox()
+        run_layout_outer = QtWidgets.QVBoxLayout(run_group)
+        run_layout_outer.setSpacing(10)
+        run_layout_outer.setContentsMargins(12, 12, 12, 12)
+        run_header = QtWidgets.QLabel("Run")
+        run_header.setStyleSheet(section_style)
+        run_layout_outer.addWidget(run_header)
+
         workers_layout = QtWidgets.QHBoxLayout()
+        workers_layout.setContentsMargins(0, 0, 0, 0)
         workers_layout.addWidget(self.lbl_workers)
         workers_layout.addWidget(self.spin_workers)
         workers_layout.addStretch(1)
-        layout.addLayout(workers_layout)
+        run_layout_outer.addLayout(workers_layout)
         run_layout = QtWidgets.QHBoxLayout()
+        run_layout.setContentsMargins(0, 0, 0, 0)
+        run_layout.setSpacing(8)
         run_layout.addWidget(self.btn_run)
         run_layout.addWidget(self.btn_cancel)
-        layout.addLayout(run_layout)
+        run_layout_outer.addLayout(run_layout)
         self.progress = QtWidgets.QProgressBar()
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         self.progress.setFormat("Idle")
-        layout.addWidget(self.progress)
-        layout.addWidget(QtWidgets.QLabel("Log:"))
-        layout.addWidget(self.log, 2)
+        run_layout_outer.addWidget(self.progress)
+        run_layout_outer.addWidget(self.log, 1)
+
+        layout.addWidget(input_group)
+        layout.addWidget(cases_group, 4)
+        layout.addWidget(run_group, 2)
 
         self.df_cases: pd.DataFrame | None = None
         self.input_path: str | None = None
@@ -208,6 +266,7 @@ class CasesPanel(QtWidgets.QWidget):
         self.btn_run.clicked.connect(self.run_selected)
         self.btn_cancel.clicked.connect(self.cancel_run)
         self.case_table.itemSelectionChanged.connect(self.on_case_selection_changed)
+        self._refresh_case_summary()
 
     def logln(self, s: str):
         """Append one log line to the panel log view."""
@@ -231,7 +290,7 @@ class CasesPanel(QtWidgets.QWidget):
             idxs.append(int(idx))
         if not idxs:
             return []
-        return self.df_cases.loc[idxs].to_dict(orient="records")
+        return self.df_cases.iloc[idxs].to_dict(orient="records")
 
     def pick_input_file(self):
         """Open a file picker, read case definitions, and refresh the table."""
@@ -263,7 +322,7 @@ class CasesPanel(QtWidgets.QWidget):
             return
 
         self.input_path = path
-        self.input_label.setText(f"Input: {path}")
+        self.input_value.setText(path)
         self.df_cases = loaded
         self._populate_case_table()
         self.btn_run.setEnabled(True)
@@ -275,6 +334,8 @@ class CasesPanel(QtWidgets.QWidget):
         if self.df_cases is None:
             self.case_table.clear()
             self.case_table.setRowCount(0)
+            self.case_table.setColumnCount(0)
+            self._refresh_case_summary()
             return
 
         def _mode_from_row(r: dict) -> str:
@@ -311,6 +372,7 @@ class CasesPanel(QtWidgets.QWidget):
         self.case_table.resizeColumnsToContents()
         if stl_col_idx >= 0:
             self.case_table.setColumnWidth(stl_col_idx, 220)
+        self._refresh_case_summary()
 
     @staticmethod
     def _format_stl_name(stl_path_value: str) -> str:
@@ -323,6 +385,7 @@ class CasesPanel(QtWidgets.QWidget):
 
     def on_case_selection_changed(self):
         """Auto-load a matching VTP for the first selected case, if available."""
+        self._refresh_case_summary()
         if self.df_cases is None:
             return
         sel = self.case_table.selectionModel().selectedRows()
@@ -333,7 +396,7 @@ class CasesPanel(QtWidgets.QWidget):
         if item is None:
             return
         idx = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        row = self.df_cases.loc[int(idx)].to_dict()
+        row = self.df_cases.iloc[int(idx)].to_dict()
         case_id = str(row.get("case_id", "")).strip()
         out_dir = Path(str(row.get("out_dir", "outputs"))).expanduser()
         if not case_id:
@@ -477,6 +540,16 @@ class CasesPanel(QtWidgets.QWidget):
         self.case_table.setEnabled(not running)
         self.btn_cancel.setEnabled(running)
         self.btn_run.setEnabled((not running) and (self.df_cases is not None))
+
+    def _refresh_case_summary(self):
+        total = 0 if self.df_cases is None else len(self.df_cases)
+        selection_model = self.case_table.selectionModel()
+        selected = 0 if selection_model is None else len(selection_model.selectedRows())
+        if total == 0:
+            self.lbl_case_summary.setText("No cases loaded")
+        else:
+            self.lbl_case_summary.setText(f"Loaded: {total} case(s)")
+        self.lbl_selection_summary.setText(f"Selected: {selected}")
 
     def _cleanup_run_worker(self):
         if self._run_worker is not None:

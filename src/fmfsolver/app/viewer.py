@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pyvista as pv
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from pyvistaqt import QtInteractor
 
 from ..core.sentman_core import resolve_attitude_to_vhat
@@ -95,12 +95,12 @@ class ViewerPanel(QtWidgets.QWidget):
         self.btn_save_image = QtWidgets.QPushButton("Save Image...")
         self.btn_save_selected_images = QtWidgets.QPushButton("Save Selected...")
 
-        self.lbl_scalar = QtWidgets.QLabel("SCALAR")
-        self.lbl_colormap = QtWidgets.QLabel("COLORMAP")
-        self.lbl_options = QtWidgets.QLabel("DISPLAY")
-        self.lbl_colorbar = QtWidgets.QLabel("COLORBAR")
-        self.lbl_camera = QtWidgets.QLabel("CAMERA")
-        self.lbl_export = QtWidgets.QLabel("EXPORT")
+        self.lbl_scalar = QtWidgets.QLabel("Scalar")
+        self.lbl_colormap = QtWidgets.QLabel("Colormap")
+        self.lbl_options = QtWidgets.QLabel("Display")
+        self.lbl_colorbar = QtWidgets.QLabel("Colorbar")
+        self.lbl_camera = QtWidgets.QLabel("Camera")
+        self.lbl_export = QtWidgets.QLabel("Export")
 
     def _style_controls(self):
         """Apply consistent sizing and style for control widgets."""
@@ -115,8 +115,6 @@ class ViewerPanel(QtWidgets.QWidget):
             lbl.setAlignment(
                 QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
             )
-            lbl.setStyleSheet("QLabel { color: #b8bcc2; font-weight: 600; }")
-        self.lbl_colormap.setStyleSheet("QLabel { color: #b8bcc2; font-weight: 600; }")
 
         max_label_width = max(lbl.sizeHint().width() for lbl in row_labels)
         for lbl in row_labels:
