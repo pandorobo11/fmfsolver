@@ -194,7 +194,7 @@ def compute_shield_mask_with_backend(
             cached = _SHIELD_MASK_CACHE.get(key)
             if cached is not None:
                 _SHIELD_MASK_CACHE.move_to_end(key, last=True)
-                return cached, ray_backend_resolved
+                return cached.copy(), ray_backend_resolved
 
     Vhat = np.asarray(Vhat, dtype=float)
     Vn = float(np.linalg.norm(Vhat))
@@ -233,8 +233,8 @@ def compute_shield_mask_with_backend(
 
     if _SHIELD_CACHE_MAX > 0:
         with _SHIELD_CACHE_LOCK:
-            _SHIELD_MASK_CACHE[key] = shielded
+            _SHIELD_MASK_CACHE[key] = shielded.copy()
             _SHIELD_MASK_CACHE.move_to_end(key, last=True)
             while len(_SHIELD_MASK_CACHE) > _SHIELD_CACHE_MAX:
                 _SHIELD_MASK_CACHE.popitem(last=False)
-    return shielded, ray_backend_resolved
+    return shielded.copy(), ray_backend_resolved

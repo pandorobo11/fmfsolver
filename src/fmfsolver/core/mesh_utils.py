@@ -49,6 +49,18 @@ _CACHE_MISSES = 0
 _MESH_CACHE_MAX = 1
 
 
+def _clone_mesh_data(data: MeshData) -> MeshData:
+    """Return a defensive copy so callers cannot mutate cached state."""
+    return MeshData(
+        mesh=data.mesh.copy(),
+        centers_m=np.array(data.centers_m, copy=True),
+        normals_out=np.array(data.normals_out, copy=True),
+        areas_m2=np.array(data.areas_m2, copy=True),
+        face_stl_index=np.array(data.face_stl_index, copy=True),
+        stl_paths_order=tuple(data.stl_paths_order),
+    )
+
+
 def _mesh_cache_key(stl_paths: List[str], scale_m_per_unit: float) -> tuple:
     """Build a cache key from absolute path metadata and scale."""
     key_paths = []
@@ -152,7 +164,7 @@ def load_meshes(stl_paths: List[str], scale_m_per_unit: float, logfn) -> MeshDat
         if cached is not None:
             _CACHE_HITS += 1
             _MESH_CACHE.move_to_end(key, last=True)
-            return cached
+            return _clone_mesh_data(cached)
 
     loaded = _load_meshes_uncached(stl_paths, scale_m_per_unit, logfn)
     with _CACHE_LOCK:
@@ -161,4 +173,4 @@ def load_meshes(stl_paths: List[str], scale_m_per_unit: float, logfn) -> MeshDat
         _MESH_CACHE.move_to_end(key, last=True)
         while len(_MESH_CACHE) > _MESH_CACHE_MAX:
             _MESH_CACHE.popitem(last=False)
-    return loaded
+    return _clone_mesh_data(loaded)

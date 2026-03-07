@@ -50,6 +50,20 @@ class TestShieldingCache(unittest.TestCase):
         expected_batches = int(np.ceil(len(centers) / 8))
         self.assertEqual(mock_ray.call_count, expected_batches * 2)
 
+    def test_cached_mask_is_not_mutated_by_caller(self) -> None:
+        """Caller-side mutation should not affect future cache hits."""
+        mesh = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+        centers = np.asarray(mesh.triangles_center, dtype=float)
+        vhat = np.array([1.0, 0.0, 0.0], dtype=float)
+
+        with patch.object(shielding, "_SHIELD_CACHE_MAX", 1):
+            first = compute_shield_mask(mesh, centers, vhat, batch_size=8)
+            expected = first.copy()
+            first[:] = ~first
+            second = compute_shield_mask(mesh, centers, vhat, batch_size=8)
+
+        self.assertTrue(np.array_equal(second, expected))
+
 
 if __name__ == "__main__":
     unittest.main()
