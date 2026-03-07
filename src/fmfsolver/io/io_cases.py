@@ -179,7 +179,7 @@ def _validate_and_resolve_stl_paths(
         for p in paths:
             candidate = Path(p).expanduser()
             resolved: Path | None = None
-            if candidate.exists():
+            if candidate.is_absolute() and candidate.exists():
                 resolved = candidate.resolve()
             elif not candidate.is_absolute() and (base_dir / candidate).exists():
                 resolved = (base_dir / candidate).resolve()

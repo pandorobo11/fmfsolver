@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -89,6 +90,31 @@ class TestIoCasesValidation(unittest.TestCase):
             loaded = read_cases(str(csv_path))
             actual = str(loaded.loc[0, "stl_path"]).split(";")
             self.assertEqual(actual, [str(stl1.resolve()), str(stl2.resolve())])
+
+    def test_read_cases_resolves_relative_stl_path_from_input_dir_before_cwd(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_relbase_") as td:
+            td_path = Path(td)
+            input_dir = td_path / "input_dir"
+            cwd_dir = td_path / "cwd_dir"
+            input_dir.mkdir()
+            cwd_dir.mkdir()
+
+            input_stl = input_dir / "mesh.stl"
+            cwd_stl = cwd_dir / "mesh.stl"
+            input_stl.write_text("solid input\nendsolid input\n", encoding="utf-8")
+            cwd_stl.write_text("solid cwd\nendsolid cwd\n", encoding="utf-8")
+            csv_path = input_dir / "input.csv"
+
+            pd.DataFrame([self._base_row("mesh.stl")]).to_csv(csv_path, index=False)
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(cwd_dir)
+                loaded = read_cases(str(csv_path))
+            finally:
+                os.chdir(old_cwd)
+
+            self.assertEqual(str(loaded.loc[0, "stl_path"]), str(input_stl.resolve()))
 
     def test_read_cases_rejects_duplicate_case_id(self):
         with tempfile.TemporaryDirectory(prefix="fmfsolver_io_dup_") as td:
