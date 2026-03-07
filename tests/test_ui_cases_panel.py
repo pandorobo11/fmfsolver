@@ -10,9 +10,13 @@ import pandas as pd
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6 import QtWidgets
+try:
+    from PySide6 import QtWidgets
 
-from fmfsolver.app.ui_cases import CasesPanel
+    from fmfsolver.app.ui_cases import CasesPanel
+except ImportError as exc:  # pragma: no cover - depends on CI image GUI libs
+    raise unittest.SkipTest(f"PySide6 GUI tests unavailable: {exc}")
+
 from fmfsolver.io.io_cases import InputValidationError, ValidationIssue
 
 

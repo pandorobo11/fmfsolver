@@ -8,13 +8,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from PySide6 import QtWidgets
+try:
+    from PySide6 import QtWidgets
 
-from fmfsolver.app.viewer import (
-    ViewerPanel,
-    _poly_matches_case_row,
-    _resolve_display_case_row,
-)
+    from fmfsolver.app.viewer import (
+        ViewerPanel,
+        _poly_matches_case_row,
+        _resolve_display_case_row,
+    )
+except ImportError as exc:  # pragma: no cover - depends on CI image GUI libs
+    raise unittest.SkipTest(f"PySide6 GUI tests unavailable: {exc}")
+
 from fmfsolver.core.solver import build_case_signature
 
 
