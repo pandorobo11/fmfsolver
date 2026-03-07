@@ -306,19 +306,19 @@ class CasesPanel(QtWidgets.QWidget):
         try:
             loaded = read_cases(path)
         except InputValidationError as e:
+            self._clear_loaded_cases()
             self.logln(f"[ERROR] Invalid input file: {len(e.issues)} issue(s).")
             dialog = _ValidationIssuesDialog(path, e.issues, self)
             dialog.exec()
-            self.btn_run.setEnabled(self.df_cases is not None)
             return
         except Exception as e:
+            self._clear_loaded_cases()
             self.logln(f"[ERROR] Failed to read input file: {e}")
             QtWidgets.QMessageBox.critical(
                 self,
                 "Input Read Error",
                 f"Failed to read input file:\n{path}\n\n{e}",
             )
-            self.btn_run.setEnabled(self.df_cases is not None)
             return
 
         self.input_path = path
@@ -550,6 +550,23 @@ class CasesPanel(QtWidgets.QWidget):
         else:
             self.lbl_case_summary.setText(f"Loaded: {total} case(s)")
         self.lbl_selection_summary.setText(f"Selected: {selected}")
+
+    def _clear_loaded_cases(self):
+        """Clear prior input state after a failed read."""
+        self.df_cases = None
+        self.input_path = None
+        self.input_value.clear()
+        self.case_table.clearSelection()
+        self.case_table.clear()
+        self.case_table.setRowCount(0)
+        self.case_table.setColumnCount(0)
+        self.progress.setRange(0, 1)
+        self.progress.setValue(0)
+        self.progress.setFormat("Idle")
+        self.btn_cancel.setEnabled(False)
+        self.btn_run.setEnabled(False)
+        self.cases_updated.emit(None)
+        self._refresh_case_summary()
 
     def _cleanup_run_worker(self):
         if self._run_worker is not None:

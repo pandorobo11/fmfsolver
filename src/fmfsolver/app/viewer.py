@@ -6,11 +6,54 @@ from pathlib import Path
 
 import numpy as np
 import pyvista as pv
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from pyvistaqt import QtInteractor
 
+from ..core.solver import build_case_signature
 from ..core.sentman_core import resolve_attitude_to_vhat
 from .ui_utils import format_case_text
+
+
+def _field_data_scalar(poly: pv.PolyData, key: str) -> str | None:
+    """Return one field-data scalar as text when present."""
+    try:
+        if key not in poly.field_data:
+            return None
+        return str(poly.field_data[key][0]).strip()
+    except Exception:
+        return None
+
+
+def _poly_matches_case_row(poly: pv.PolyData, row: dict) -> bool:
+    """Return True when VTP field data matches the requested case row."""
+    case_id = str(row.get("case_id", "")).strip()
+    if not case_id:
+        return False
+    actual_case_id = _field_data_scalar(poly, "case_id")
+    actual_signature = _field_data_scalar(poly, "case_signature")
+    expected_signature = build_case_signature(row)
+    return actual_case_id == case_id and actual_signature == expected_signature
+
+
+def _resolve_display_case_row(poly: pv.PolyData, df_cases) -> dict | None:
+    """Resolve the matching case row for the loaded VTP using signature first."""
+    case_id = _field_data_scalar(poly, "case_id")
+    if not case_id or df_cases is None:
+        return None
+
+    matches = df_cases[df_cases["case_id"].astype(str) == case_id]
+    if len(matches) == 0:
+        return None
+
+    actual_signature = _field_data_scalar(poly, "case_signature")
+    if actual_signature:
+        for _, candidate in matches.iterrows():
+            row = candidate.to_dict()
+            if build_case_signature(row) == actual_signature:
+                return row
+        return None
+
+    return matches.iloc[0].to_dict()
 
 
 class ViewerPanel(QtWidgets.QWidget):
@@ -375,7 +418,13 @@ class ViewerPanel(QtWidgets.QWidget):
 
             try:
                 poly = pv.read(str(vtp_path))
-                self.load_vtp(str(vtp_path), poly=poly)
+                if not _poly_matches_case_row(poly, row):
+                    skipped += 1
+                    self.logln(
+                        f"[SKIP] VTP signature mismatch for '{case_id}': {vtp_path}"
+                    )
+                    continue
+                self.load_vtp(str(vtp_path), poly=poly, case_row=row)
                 image_path = out_dir / f"{case_id}.png"
                 self.plotter.screenshot(str(image_path))
                 saved += 1
@@ -402,7 +451,12 @@ class ViewerPanel(QtWidgets.QWidget):
             return
         self.load_vtp(path)
 
-    def load_vtp(self, path: str, poly: pv.PolyData | None = None):
+    def load_vtp(
+        self,
+        path: str,
+        poly: pv.PolyData | None = None,
+        case_row: dict | None = None,
+    ):
         """Load VTP data, resolve case context, and refresh rendering."""
         if poly is None:
             try:
@@ -415,18 +469,10 @@ class ViewerPanel(QtWidgets.QWidget):
             self._poly = poly
 
         # Determine which case this VTP corresponds to (for overlay)
-        self._display_case_row = None
-        case_id = None
-        try:
-            if "case_id" in self._poly.field_data:
-                case_id = str(self._poly.field_data["case_id"][0])
-        except Exception:
-            case_id = None
-
-        if case_id and self.df_cases is not None:
-            m = self.df_cases[self.df_cases["case_id"].astype(str) == str(case_id)]
-            if len(m):
-                self._display_case_row = m.iloc[0].to_dict()
+        if case_row is not None:
+            self._display_case_row = dict(case_row)
+        else:
+            self._display_case_row = _resolve_display_case_row(self._poly, self.df_cases)
 
         self.logln(f"[VIEW] Loaded VTP: {path}")
         self.update_view()
