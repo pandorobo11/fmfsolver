@@ -436,7 +436,7 @@ class CasesPanel(QtWidgets.QWidget):
             df_sel = self.df_cases.copy().reset_index(drop=True)
 
         out_summary = Path(self.input_path)
-        out_dir = Path("outputs")
+        out_dir = out_summary.parent / "outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
         default_path = out_dir / f"{out_summary.stem}_result.csv"
 

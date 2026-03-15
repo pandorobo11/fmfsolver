@@ -66,8 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output",
-        default="outputs/benchmark_metrics.csv",
-        help="Path to benchmark metrics CSV.",
+        default=None,
+        help="Path to benchmark metrics CSV (default: <input_dir>/outputs/benchmark_metrics.csv).",
     )
     parser.add_argument(
         "--write-results",
@@ -76,8 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--result-prefix",
-        default="outputs/benchmark_result",
-        help="Output prefix when --write-results is enabled.",
+        default=None,
+        help=(
+            "Output prefix when --write-results is enabled "
+            "(default: <input_dir>/outputs/benchmark_result)."
+        ),
     )
     parser.add_argument(
         "--cases",
@@ -99,7 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--repeat must be >= 1")
 
     input_path = Path(args.input).expanduser()
-    metrics_path = Path(args.output).expanduser()
+    if args.output:
+        metrics_path = Path(args.output).expanduser()
+    else:
+        metrics_path = input_path.parent / "outputs" / "benchmark_metrics.csv"
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
 
     df = read_cases(str(input_path))
@@ -119,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         df_run = df.reset_index(drop=True)
 
     rows: list[dict] = []
+    result_prefix = (
+        Path(args.result_prefix).expanduser()
+        if args.result_prefix
+        else input_path.parent / "outputs" / "benchmark_result"
+    )
 
     for i in range(1, args.repeat + 1):
         import resource
@@ -132,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         wall_s = time.perf_counter() - t0
 
         if args.write_results:
-            result_path = Path(f"{args.result_prefix}_{i:02d}.csv").expanduser()
+            result_path = Path(f"{result_prefix}_{i:02d}.csv").expanduser()
             result_path.parent.mkdir(parents=True, exist_ok=True)
             write_results_csv(str(result_path), df_run, result_df)
 

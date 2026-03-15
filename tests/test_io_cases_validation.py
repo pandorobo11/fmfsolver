@@ -75,6 +75,34 @@ class TestIoCasesValidation(unittest.TestCase):
                 [c for c in INPUT_COLUMN_ORDER if c in loaded.columns],
             )
 
+    def test_read_cases_resolves_relative_out_dir_from_input_dir(self):
+        with tempfile.TemporaryDirectory(prefix="fmfsolver_io_outdir_") as td:
+            td_path = Path(td)
+            input_dir = td_path / "input_dir"
+            cwd_dir = td_path / "cwd_dir"
+            input_dir.mkdir()
+            cwd_dir.mkdir()
+
+            stl_path = input_dir / "mesh.stl"
+            stl_path.write_text("solid mesh\nendsolid mesh\n", encoding="utf-8")
+            csv_path = input_dir / "input.csv"
+
+            row = self._base_row("mesh.stl")
+            row["out_dir"] = "outputs"
+            pd.DataFrame([row]).to_csv(csv_path, index=False)
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(cwd_dir)
+                loaded = read_cases(str(csv_path))
+            finally:
+                os.chdir(old_cwd)
+
+            self.assertEqual(
+                str(loaded.loc[0, "out_dir"]),
+                str((input_dir / "outputs").resolve()),
+            )
+
     def test_read_cases_normalizes_multi_stl_paths_to_absolute(self):
         with tempfile.TemporaryDirectory(prefix="fmfsolver_io_multi_") as td:
             td_path = Path(td)

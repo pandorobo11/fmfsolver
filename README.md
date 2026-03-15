@@ -97,7 +97,7 @@ Supported formats:
 | `Lref_Cn_m` | Yes | m | Yaw moment reference length | Denominator for `Cn`. Must be non-zero. |
 | `shielding_on` | No | 0/1 int | Enable shielding | `1`: ray-casting shielding on, `0`: off. Default `0`. |
 | `ray_backend` | No | string | Ray intersector backend | `auto` (default), `rtree`, or `embree`. Use `rtree` when you want to avoid Embree behavior differences. |
-| `out_dir` | No | path string | Output directory for per-case files | Used for VTP/NPZ only. Default `outputs`. |
+| `out_dir` | No | path string | Output directory for per-case files | Used for VTP/NPZ only. Relative paths are resolved from the input file directory. Default `outputs`. |
 | `save_vtp_on` | No | 0/1 int | Write VTP file | `1`: write `<out_dir>/<case_id>.vtp`. Default `1`. |
 | `save_npz_on` | No | 0/1 int | Write NPZ file | `1`: write `<out_dir>/<case_id>.npz`. Default `0`. |
 
@@ -183,7 +183,7 @@ uv run fmfsolver-cli --input <input.csv or input.xlsx> [options]
 
 Options:
 - `-i, --input`: input case file (required)
-- `-o, --output`: result CSV path (default: `outputs/<input_stem>_result.csv`)
+- `-o, --output`: result CSV path (default: `<input_dir>/outputs/<input_stem>_result.csv`)
 - `-j, --workers`: number of parallel workers (default: `1`)
 - `--cases`: run only selected `case_id` values (space/comma separated)
 
@@ -213,18 +213,18 @@ uv run python scripts/benchmark_ray.py --workers 8 --repeat 3
 ```
 
 Main outputs:
-- `outputs/benchmark_metrics.csv`
+- `<input_dir>/outputs/benchmark_metrics.csv`
   - `wall_elapsed_s`: wall-clock elapsed time per run
   - `peak_rss_combined_mib`: approximate peak RSS (`self + children`)
   - `python_peak_alloc_mib`: peak Python allocation from `tracemalloc`
 - Optional per-run result CSV (`--write-results`)
-  - `outputs/benchmark_result_01.csv`, ...
+  - `<input_dir>/outputs/benchmark_result_01.csv`, ...
 
 ## Output Files
 
 - Result summary CSV:
-  - default: `outputs/<input_stem>_result.csv` (CLI)
-  - GUI: chosen in save dialog
+  - default: `<input_dir>/outputs/<input_stem>_result.csv` (CLI)
+  - GUI: save dialog opens with `<input_dir>/outputs/<input_stem>_result.csv`
   - input-side columns are included first, in the same order as the input file specification
   - for multi-STL cases, includes one `scope=total` row and one `scope=component` row per STL
   - output-side columns are appended after input columns:

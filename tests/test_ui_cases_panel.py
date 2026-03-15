@@ -88,6 +88,27 @@ class TestCasesPanelState(unittest.TestCase):
         self.assertFalse(panel.btn_run.isEnabled())
         self.assertEqual(panel.selected_case_rows(), [])
 
+    def test_run_selected_default_output_path_uses_input_file_directory(self):
+        panel = CasesPanel()
+        panel.df_cases = self._base_loaded_df()
+        panel.input_path = "/tmp/fmfsolver_inputs/input.csv"
+        panel.input_value.setText(panel.input_path)
+        panel._populate_case_table()
+
+        captured: dict[str, str] = {}
+
+        def fake_get_save_file_name(_parent, _title, default_path, _filter):
+            captured["default_path"] = default_path
+            return ("", "")
+
+        with patch.object(QtWidgets.QFileDialog, "getSaveFileName", side_effect=fake_get_save_file_name):
+            panel.run_selected()
+
+        self.assertEqual(
+            captured["default_path"],
+            "/tmp/fmfsolver_inputs/outputs/input_result.csv",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

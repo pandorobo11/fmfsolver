@@ -39,7 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
         "-o",
         "--output",
         default=None,
-        help="Output result CSV path (default: outputs/<input_stem>_result.csv)",
+        help=(
+            "Output result CSV path "
+            "(default: <input_dir>/outputs/<input_stem>_result.csv)"
+        ),
     )
     parser.add_argument(
         "-j",
@@ -93,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         out_path = Path(args.output).expanduser()
     else:
-        out_path = Path("outputs") / f"{input_path.stem}_result.csv"
+        out_path = input_path.parent / "outputs" / f"{input_path.stem}_result.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         out_path.unlink()

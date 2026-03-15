@@ -85,6 +85,7 @@ class ViewerPanel(QtWidgets.QWidget):
 
         self.df_cases = None
         self._poly: pv.PolyData | None = None
+        self._loaded_vtp_path: Path | None = None
         self._display_case_row: dict | None = None
         self._overlay_actor = None
         self._default_view_vec = (-1, -1, 1)
@@ -366,10 +367,11 @@ class ViewerPanel(QtWidgets.QWidget):
         """Save the current viewport image to a user-selected file."""
         if self.plotter is None:
             return
+        default_dir = self._default_artifact_dir()
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Save View Image",
-            str(Path.cwd()),
+            str(default_dir),
             "PNG (*.png);;JPEG (*.jpg *.jpeg);;TIFF (*.tif *.tiff)",
         )
         if not path:
@@ -386,7 +388,17 @@ class ViewerPanel(QtWidgets.QWidget):
             self.logln("[WARN] No selected cases.")
             return
 
-        default_dir = Path.cwd() / "outputs" / "images"
+        first_out_dir = None
+        first_row = rows[0] if rows else None
+        if first_row is not None:
+            raw_out_dir = str(first_row.get("out_dir", "")).strip()
+            if raw_out_dir:
+                first_out_dir = Path(raw_out_dir).expanduser()
+        default_dir = (
+            first_out_dir / "images"
+            if first_out_dir is not None
+            else self._default_artifact_dir() / "images"
+        )
         out_dir_str = QtWidgets.QFileDialog.getExistingDirectory(
             self,
             "Select Folder to Save Selected Images",
@@ -445,7 +457,10 @@ class ViewerPanel(QtWidgets.QWidget):
     def open_vtp(self):
         """Open a VTP file from disk and display it."""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Open VTP", str(Path.cwd()), "VTK PolyData (*.vtp)"
+            self,
+            "Open VTP",
+            str(self._default_artifact_dir()),
+            "VTK PolyData (*.vtp)",
         )
         if not path:
             return
@@ -458,6 +473,7 @@ class ViewerPanel(QtWidgets.QWidget):
         case_row: dict | None = None,
     ):
         """Load VTP data, resolve case context, and refresh rendering."""
+        self._loaded_vtp_path = Path(path).expanduser()
         if poly is None:
             try:
                 self._poly = pv.read(path)
@@ -476,6 +492,16 @@ class ViewerPanel(QtWidgets.QWidget):
 
         self.logln(f"[VIEW] Loaded VTP: {path}")
         self.update_view()
+
+    def _default_artifact_dir(self) -> Path:
+        """Return the most relevant directory for VTP/image dialogs."""
+        if self._loaded_vtp_path is not None:
+            return self._loaded_vtp_path.parent
+        if self._display_case_row is not None:
+            raw_out_dir = str(self._display_case_row.get("out_dir", "")).strip()
+            if raw_out_dir:
+                return Path(raw_out_dir).expanduser()
+        return Path.cwd()
 
     def _get_clim(self, poly: pv.PolyData, scalar: str):
         """Determine colorbar limits from UI inputs and scalar data."""

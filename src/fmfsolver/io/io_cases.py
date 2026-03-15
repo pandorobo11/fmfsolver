@@ -311,6 +311,18 @@ def _validate_out_dir(df: pd.DataFrame, add_issue: _AddIssueFn) -> None:
         add_issue(int(idx), "out_dir", "must not be blank.")
 
 
+def _resolve_out_dirs(df: pd.DataFrame, input_path: Path) -> None:
+    """Resolve relative `out_dir` entries from the input file directory."""
+    base_dir = input_path.parent
+    for idx, raw in df["out_dir"].items():
+        candidate = Path(str(raw)).expanduser()
+        if candidate.is_absolute():
+            resolved = candidate.resolve()
+        else:
+            resolved = (base_dir / candidate).resolve()
+        df.at[idx, "out_dir"] = str(resolved)
+
+
 def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     """Validate input rows and normalize dtypes used by downstream solver code."""
     issues: list[ValidationIssue] = []
@@ -344,6 +356,7 @@ def _validate_and_normalize(df: pd.DataFrame, input_path: Path) -> pd.DataFrame:
     if issues:
         raise InputValidationError(issues)
 
+    _resolve_out_dirs(df, input_path)
     return df
 
 
@@ -356,7 +369,8 @@ def read_cases(path: str) -> pd.DataFrame:
     Returns:
         DataFrame containing required columns and default-filled optional ones.
         ``stl_path`` is normalized to absolute path(s), resolving relative paths
-        from the input file directory.
+        from the input file directory. Relative ``out_dir`` values are also
+        resolved from the input file directory.
 
     Raises:
         ValueError: If the file format is unsupported.

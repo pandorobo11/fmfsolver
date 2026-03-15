@@ -98,6 +98,27 @@ class TestViewerVtpMatching(unittest.TestCase):
 
         self.assertTrue(any("signature mismatch" in msg for msg in logs))
 
+    def test_batch_image_export_default_dir_uses_case_out_dir(self):
+        row = {**self._base_row(), "out_dir": "/tmp/fmfsolver_case_outputs"}
+        captured: dict[str, str] = {}
+        fake_viewer = SimpleNamespace(
+            logln=lambda _msg: None,
+            _default_artifact_dir=lambda: Path("/tmp/fallback"),
+        )
+
+        def fake_get_existing_directory(_parent, _title, default_dir):
+            captured["default_dir"] = default_dir
+            return ""
+
+        with patch.object(
+            QtWidgets.QFileDialog,
+            "getExistingDirectory",
+            side_effect=fake_get_existing_directory,
+        ):
+            ViewerPanel.save_images_for_case_rows(fake_viewer, [row])
+
+        self.assertEqual(captured["default_dir"], "/tmp/fmfsolver_case_outputs/images")
+
 
 if __name__ == "__main__":
     unittest.main()
